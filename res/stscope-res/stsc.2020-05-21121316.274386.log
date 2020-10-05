@@ -1,0 +1,2 @@
+[2020-05-21 12:13:16,317 - stsc - INFO ] >> Using device cuda
+[2020-05-21 12:13:16,318 - stsc - INFO ] >> fitting sc data | count file : /home/alma.andersson/stsc/franzi/data/sc/sc-liver-count-data-1.tsv.gz | labels file : /home/alma.andersson/stsc/franzi/data/sc/sc-liver-metadata-1.tsv

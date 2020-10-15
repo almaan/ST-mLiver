@@ -139,7 +139,13 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
         for k,ii in enumerate(include_idx):
             pos = mask_long["type"] == ii
             crd = mask_long[["x","y"]].values[pos,:]
-            dist = cdist(crd,crd)
+
+            ncrd = crd.shape[0]
+            if ncrd >= 1e3:
+                sample_crd = np.random.choice(np.arange(ncrd),size=int(1e3))
+                dist = cdist(crd[sample_crd,:],crd[sample_crd,:])
+            else:
+                dist = cdist(crd,crd)
 
             dist[dist == 0] = dist.max()
             eps = np.quantile(dist,alpha)
@@ -155,12 +161,14 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
 
         mask_long["id"] = segs
 
+        mask_long["id"] -= mask_long["id"].values.min()
+
     img = Image.open(img)
     img = np.asarray(img).astype(int)
 
     if "rgb" not in data.keys():
         mask_long["type"] -= mask_long["type"].values.min()
-    mask_long["id"] -= mask_long["id"].values.min()
+
 
     uns = dict(img = img,
                mask = mask_long,

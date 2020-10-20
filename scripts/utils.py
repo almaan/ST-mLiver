@@ -8,6 +8,10 @@ import anndata as ad
 from scipy.spatial.distance import cdist
 from sklearn.linear_model import LogisticRegression as LR
 from functools import reduce
+from skmisc.loess import loess
+
+import matplotlib.pyplot as plt
+
 
 from typing import Dict,Optional,Union,Tuple,List,Callable
 
@@ -21,6 +25,263 @@ def eprint(s : str,
 
     print("[ERROR] : {}".format(s))
 
+
+
+def visualize_prediction_result(results : pd.DataFrame,
+                                bar_width : float = 0.8,
+                                accuracy_colname : str = "accuracy",
+                                target_colname : str = "pred_on",
+                                )->Tuple[plt.Figure,plt.Axes]:
+
+    fig,ax = plt.subplots(1,1, figsize = (7,4))
+
+    p1 = ax.bar(np.arange(results.shape[0]),
+                results[accuracy_colname].values,
+                bar_width,
+                facecolor = "#8F88EC",
+                edgecolor = "black",
+                label = "correct",
+                        )
+    p2 = ax.bar(np.arange(results.shape[0]),
+                1.0 - results[accuracy_colname].values,
+                bar_width,
+                bottom=results[accuracy_colname].values,
+                facecolor = "lightgray",
+                label = "incorrect",
+            )
+
+    p2 = ax.bar(np.arange(results.shape[0]),
+                np.ones(results.shape[0]),
+                bar_width,
+                facecolor = "none",
+                edgecolor = "black",
+                linestyle = "dashed",
+            )
+
+
+    ax.axhline(y = 0.5,
+               linestyle = "dashed",
+               color = "red",
+               label = r"$50\%$",
+               )
+
+    ax.set_xticks(np.arange(results.shape[0]))
+    ax.set_xticklabels(results[target_colname],
+                    rotation = 90,
+                    fontsize = 10,
+                    )
+
+    ax.set_xlabel("Predicted on",fontsize =15)
+    ax.set_ylabel("Accuracy",fontsize = 15)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.legend()
+
+    return (fig,ax)
+
+
+
+def get_figure(n_elements : int,
+               n_cols : Optional[int] = None,
+               n_rows : Optional[int] = None,
+               side_size : float = 3,
+               sharey : bool = False,
+               sharex : bool = False,
+               )->Tuple[plt.Figure,plt.Axes]:
+
+    n_rows,n_cols = get_plot_dims(n_elements,n_cols,n_rows)
+    figsize = (n_cols * side_size,
+               n_rows * side_size,
+               )
+
+    fig,ax = plt.subplots(n_rows,
+                          n_cols,
+                          figsize = figsize,
+                          sharex = sharex,
+                          sharey = sharey,
+                          )
+
+    ax = ax.flatten()
+
+    for aa in ax[n_elements::]:
+        aa.set_visible(False)
+
+    return (fig,ax)
+
+
+def get_plot_dims(n_elements : int,
+                  n_cols : Optional[int] = None,
+                  n_rows : Optional[int] = None,
+                  )->Tuple[int,int]:
+
+    round_fun = lambda x: int(np.ceil(n_elements/x))
+    if n_cols is not None:
+        n_rows = round_fun(n_cols)
+    elif n_rows is not None:
+        n_cols = round_fun(n_rows)
+    else:
+        n_rows  = np.sqrt(n_elements)
+        if round(n_rows) == n_rows:
+            n_cols = n_rows
+        else:
+            n_cols = n_rows +1
+
+    return (n_rows,n_cols)
+
+def plot_veins(ax : plt.Axes,
+               data : ad.AnnData,
+               show_image : bool = False,
+               show_spots : bool = False,
+               **kwargs,
+               )->None:
+
+
+    if "alternative_colors" in kwargs:
+        type_color = kwargs["alternative_colors"]
+    else:
+        types = np.unique(data.uns["mask"]["type"].values)
+        types = np.sort(types)
+
+        cti = {v:k for k,v in\
+           enumerate(types)}
+
+        type_color = data.uns["mask"]["type"].map(cti)
+        type_color = type_color.values.flatten()
+
+
+    if show_image:
+        ax.imshow(data.uns["img"])
+    if show_spots:
+        ax.scatter(data.obs.x,
+                   data.obs.y,
+                   s = kwargs.get("spot_marker_size",80),
+                   c = "none",
+                   edgecolor = "black",
+                   )
+
+    ax.scatter(data.uns["mask"].x,
+               data.uns["mask"].y,
+               c = type_color,
+               s = kwargs.get("node_marker_size",2),
+               cmap = kwargs.get("cmap",plt.cm.Spectral_r),
+               )
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+
+
+
+
+def plot_expression_by_distance(ax : plt.Axes,
+                                data : Tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray],
+                                feature : Optional[str] = None,
+                                include_background : bool = True,
+                                curve_label : Optional[str]  = None,
+                                flavor : str = "normal",
+                                color_scheme : Optional[Dict[str,str]] = None,
+                                ratio_order : List[str] = ["central","portal"],
+                                list_flavor_choices : bool = False,
+                                )->None:
+
+    flavors = ["normal","logodds","single_vein"]
+    if list_flavor_choices:
+        print("Flavors to choose from are : {}".format(', '.join(flavors)))
+        return None
+    if flavor not in flavors:
+        raise ValueError("Not a valid flavor")
+
+    if len(data) != 4:
+        raise ValueError("Data must be (xs,ys,ys_hat,stderr)")
+
+    if color_scheme is None:
+        color_scheme = {}
+
+    if include_background:
+        ax.scatter(data[0],
+                data[1],
+                s = 1,
+                c = color_scheme.get("background","gray"),
+                alpha = 0.4,
+                )
+
+
+    ax.fill_between(data[0],
+                    data[2] - data[3],
+                    data[2] + data[3],
+                    alpha = 0.2,
+                    color = color_scheme.get("envelope","blue"),
+                    )
+
+    ax.set_title("Feature : {}".format(("" if feature is None else feature)))
+    ax.set_ylabel("Feature Value")
+
+    if flavor == "normal":
+        ax.set_xlabel("Distance to vein")
+
+    if flavor == "logodds":
+
+        x_min,x_max = ax.get_xlim()
+
+        ax.axvspan(xmin = x_min,
+                   xmax = 0,
+                   color = color_scheme.get(ratio_order[0],"red"),
+                   alpha = 0.2,
+                   )
+
+        ax.axvspan(xmin = 0,
+                   xmax = x_max,
+                   color = color_scheme.get(ratio_order[1],"blue"),
+                   alpha = 0.2,
+                   )
+
+        d1 = ratio_order[0][0]
+        d2 = ratio_order[1][0]
+        ax.set_xlabel(r"$\log(d_{}) - \log(d_{})$".format(d1,d2))
+
+    ax.plot(data[0],
+            data[2],
+            c = color_scheme.get("fitted","black"),
+            linewidth = 2,
+            label = ("none" if curve_label is None else curve_label),
+            )
+
+
+
+
+def smooth_fit(xs : np.ndarray,
+               ys : np.ndarray,
+               dist_thrs : float = 0,
+               )->Tuple[np.ndarray,np.ndarray,np.ndarray]:
+
+    srt = np.argsort(xs)
+    xs = xs[srt]
+    ys = ys[srt]
+
+    keep = np.abs(xs) < dist_thrs
+    xs = xs[keep]
+    ys = ys[keep]
+
+    # generate loess class object
+    ls = loess(xs,
+               ys,
+              )
+    # fit loess class to data
+    ls.fit()
+
+    # predict on data
+    pred =  ls.predict(xs,
+                       stderror=True)
+    # get predicted values
+    ys_hat = pred.values
+    # get standard error
+    stderr = pred.stderr
+
+    return (xs,ys,ys_hat,stderr)
+
+
 class VeinData:
     def __init__(self,
                  data_set : Dict[str,ad.AnnData],
@@ -28,6 +289,8 @@ class VeinData:
                  get_individual_id : Optional[Callable] = None,
                  use_genes : Optional[str] = None,
                  verbose : bool = False,
+                 weight_by_distance : bool = False,
+                 sigma : float = 1,
                  )->None:
 
 
@@ -38,7 +301,7 @@ class VeinData:
         else:
             self.genes = use_genes
 
-
+        self.data = {s:d.uns["mask"] for s,d in data_set.items()}
         self.samples = list(data_set.keys())
         self.n_samples = len(self.samples)
 
@@ -55,13 +318,37 @@ class VeinData:
 
         self._radius = radius
         self._verbose_state = verbose
-        self._build(data_set)
+        self._build(data_set = data_set,
+                    weight_by_distance = weight_by_distance,
+                    sigma = sigma,
+                    )
+
+    def get_vein_crds(self,
+                      vein_id : str,
+                      )->np.ndarray:
+
+        sample,idx = vein_id.split("_")
+        sel = (self.data[sample]["id"] == int(idx)).values
+        crds = self.data[sample][["x","y"]].values[sel,:]
+        return crds
+
+    def get_distance_to_vein(self,
+                             crd : np.ndarray,
+                             vein_id : np.ndarray,
+                             )->np.ndarray:
+
+        dists = cdist(crd,self.get_vein_crds(vein_id))
+        dists = np.min(dists,axis = 1)
+        return dists
+
 
 
     def _build(self,
                data_set : Dict[str,ad.AnnData],
                verbose : bool = None,
-               ):
+               weight_by_distance : bool = False,
+               sigma : float = 1,
+               )->pd.DataFrame:
 
         all_genes = pd.Index([])
 
@@ -104,12 +391,14 @@ class VeinData:
                 # get indices of spots
                 # within specified radius
                 in_box = dmat < self._radius
+                n_in_box = sum(in_box)
+                box_dists = dmat[in_box]
                 in_box = data.obs.index[in_box]
 
                 if verbose:
                     print("Sample : {} | Vein {} | Spots used : {}".format(sample,
-                                                                           vein,
-                                                                           sum(in_box),
+                                                                           str(vein),
+                                                                           str(n_in_box),
                                                                            ))
 
                 # get average expression for 
@@ -122,6 +411,9 @@ class VeinData:
                 inter_genes = pd.Index(self.genes).intersection(data.var.index)
 
                 tmp_data.loc[in_box,inter_genes] = data.to_df().loc[in_box,inter_genes]
+
+                if weight_by_distance:
+                    tmp_data.loc[:,:] = np.exp(-box_dists[:,np.newaxis]/sigma) * tmp_data.values
 
                 x_vein = np.mean(tmp_data.values,axis = 0)
 
@@ -245,10 +537,9 @@ class Model:
             self.clf = LR(**clf_params)
         else:
             self.clf = LR(random_state = 1337,
-                          max_iter = 100,
+                          max_iter = 1000,
                           penalty ="l2",
-                          solver = "liblinear",
-                          fit_intercept = False,
+                          fit_intercept = True,
                           )
 
 
@@ -396,6 +687,7 @@ class Model:
                           k : int,
                           exclude_class : Optional[Union[List[str],str]]=None,
                           by : str = "sample",
+                          verbose : Optional[bool] = None,
                           )->pd.DataFrame:
 
         from itertools import combinations
@@ -437,15 +729,20 @@ class Model:
                                      name_list))
 
             self.fit(train_on=train_on,
-                     exclude_class=exclude_class)
+                     exclude_class=exclude_class,
+                     verbose = verbose,
+                     )
 
             acc = self.eval(eval_on=predict_on,
-                            exclude_class=exclude_class)
+                            exclude_class=exclude_class,
+                            verbose = verbose,
+                            )
 
             results_df["pred_on"].append(', '.join(predict_on))
             results_df["train_on"].append(', '.join(train_on))
             results_df["accuracy"].append(acc)
 
         return pd.DataFrame(results_df)
+
 
 

@@ -7,9 +7,11 @@
 
 library(Seurat)
 
-pth <- "../data/stereoscope/sc/itzkowitz/cnt/ScLiver_formatted_rownames.tsv.gz"
-
-data <- read.table(pth,sep = '\t',row.names = 1,header = 1)
+pth <- "../data/stereoscope/sc/mouse-cell-atlas/sc-liver-data.tsv.gz"
+data <- read.table(pth,
+                   sep = '\t',
+                   row.names = 1,
+                   header = 1)
 
 se <- CreateSeuratObject(t(data))
 
@@ -22,7 +24,7 @@ se <- FindVariableFeatures(se,
 top5000 <- VariableFeatures(se)
 
 write.table(top5000,
-            file = "../data/gene-lists/stereoscope/top5000-genes-001.txt",
+            file = "../data/gene-lists/stereoscope/top5000-genes-002.txt",
             sep = '\n',
             row.names =F,
             col.names = F,

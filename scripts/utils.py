@@ -161,13 +161,32 @@ def plot_veins(ax : plt.Axes,
                    c = "none",
                    edgecolor = "black",
                    )
-    if show_id: 
-    	for vein in np.unique(vein_data["id"]):
-                # get index of vein members in the mask-data
-                pos = vein_data["id"] == vein
-                # get coordinates of specific vein
-                vein_crd = vein_data[["x","y"]].values[pos,:]
-                #plot all the ids as strings on the tissue - that is where I don't know how to continue
+    if show_id:
+        id_label = kwargs.get("id_label","id")
+        assert "id" in data.uns["mask"].columns,\
+            "must have vein ids"
+
+        uni_veins = np.unique(data.uns["mask"][id_label].values)
+
+        for vein in uni_veins:
+            _pos = data.uns["mask"][id_label].values == vein
+            _crds = data.uns["mask"][["x","y"]].values[_pos,:]
+            _mns = _crds.min(axis=0).reshape(1,2)
+            align = top.get("id_align","top_right")
+        if align == "center":
+            _xy = crd.mean(axis = 0)
+            _x = crd[0]
+            _y = crd[1]
+
+        else:
+            _pxy = np.argmax(np.linalg.norm(_crds - _mns))
+            _x = _crds[_pxy,0]
+            _y = _crds[_pxy,1]
+
+        ax.text(_x,
+                _y,
+                s = vein,
+                fontsize = kwargs.get("id_fontsize",10))
 
     ax.scatter(data.uns["mask"].x,
                data.uns["mask"].y,

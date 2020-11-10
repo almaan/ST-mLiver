@@ -394,6 +394,7 @@ class VeinData:
                 n_in_box = sum(in_box)
                 box_dists = dmat[in_box]
                 in_box = data.obs.index[in_box]
+                print(in_box)
 
                 if verbose:
                     print("Sample : {} | Vein {} | Spots used : {}".format(sample,

@@ -134,6 +134,7 @@ def plot_veins(ax : plt.Axes,
                data : ad.AnnData,
                show_image : bool = False,
                show_spots : bool = False,
+               show_id : bool = False,
                **kwargs,
                )->None:
 
@@ -160,6 +161,13 @@ def plot_veins(ax : plt.Axes,
                    c = "none",
                    edgecolor = "black",
                    )
+    if show_id: 
+    	for vein in np.unique(vein_data["id"]):
+                # get index of vein members in the mask-data
+                pos = vein_data["id"] == vein
+                # get coordinates of specific vein
+                vein_crd = vein_data[["x","y"]].values[pos,:]
+                #plot all the ids as strings on the tissue - that is where I don't know how to continue
 
     ax.scatter(data.uns["mask"].x,
                data.uns["mask"].y,

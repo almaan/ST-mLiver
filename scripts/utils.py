@@ -138,7 +138,6 @@ def plot_veins(ax : plt.Axes,
                **kwargs,
                )->None:
 
-
     if "alternative_colors" in kwargs:
         type_color = kwargs["alternative_colors"]
     else:
@@ -161,6 +160,14 @@ def plot_veins(ax : plt.Axes,
                    c = "none",
                    edgecolor = "black",
                    )
+
+    ax.scatter(data.uns["mask"].x,
+        data.uns["mask"].y,
+        c = type_color,
+        s = kwargs.get("node_marker_size",2),
+        cmap = kwargs.get("cmap",plt.cm.Spectral_r),
+        )
+
     if show_id:
         id_label = kwargs.get("id_label","id")
         assert "id" in data.uns["mask"].columns,\
@@ -172,28 +179,22 @@ def plot_veins(ax : plt.Axes,
             _pos = data.uns["mask"][id_label].values == vein
             _crds = data.uns["mask"][["x","y"]].values[_pos,:]
             _mns = _crds.min(axis=0).reshape(1,2)
-            align = top.get("id_align","top_right")
-        if align == "center":
-            _xy = crd.mean(axis = 0)
-            _x = crd[0]
-            _y = crd[1]
+            align = kwargs.get("id_align","top_right")
 
-        else:
-            _pxy = np.argmax(np.linalg.norm(_crds - _mns))
-            _x = _crds[_pxy,0]
-            _y = _crds[_pxy,1]
+            if align == "center":
+                _xy = crd.mean(axis = 0)
+                _x = crd[0]
+                _y = crd[1]
+            else:
+                _pxy = np.argmax(np.linalg.norm(_crds - _mns))
+                _x = _crds[_pxy,0]
+                _y = _crds[_pxy,1]
 
-        ax.text(_x,
-                _y,
-                s = vein,
-                fontsize = kwargs.get("id_fontsize",10))
+            ax.text(_x,
+                    _y,
+                    s = vein,
+                    fontsize = kwargs.get("id_fontsize",10))
 
-    ax.scatter(data.uns["mask"].x,
-               data.uns["mask"].y,
-               c = type_color,
-               s = kwargs.get("node_marker_size",2),
-               cmap = kwargs.get("cmap",plt.cm.Spectral_r),
-               )
 
     ax.set_aspect("equal")
     ax.axis("off")
@@ -651,6 +652,7 @@ class Model:
                 objs[k] = pd.Index(obj)
 
         predict_on,exclude_class = objs
+
 
         pred_data,pred_labels = self.data.get_expression(predict_on,
                                                          return_type = True,

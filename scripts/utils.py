@@ -206,6 +206,8 @@ def plot_veins(ax : plt.Axes,
 def plot_expression_by_distance(ax : plt.Axes,
                                 data : Tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray],
                                 feature : Optional[str] = None,
+                                sample_id: Optional[str] = None, 
+                                vein_id: Optional[int] = None,
                                 include_background : bool = True,
                                 curve_label : Optional[str]  = None,
                                 flavor : str = "normal",
@@ -240,7 +242,7 @@ def plot_expression_by_distance(ax : plt.Axes,
                     data[2] - data[3],
                     data[2] + data[3],
                     alpha = 0.2,
-                    color = color_scheme.get("envelope","blue"),
+                    color = color_scheme.get("envelope","grey"),
                     )
 
     ax.set_title("Feature : {}".format(("" if feature is None else feature)))

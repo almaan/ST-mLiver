@@ -212,6 +212,9 @@ def plot_expression_by_distance(ax : plt.Axes,
                                 color_scheme : Optional[Dict[str,str]] = None,
                                 ratio_order : List[str] = ["central","portal"],
                                 list_flavor_choices : bool = False,
+                                feature_type : str = "Feature",
+                                distance_scale_factor : float = 1.0,
+                                **kwargs,
                                 )->None:
 
     flavors = ["normal","logodds","single_vein"]
@@ -227,27 +230,36 @@ def plot_expression_by_distance(ax : plt.Axes,
     if color_scheme is None:
         color_scheme = {}
 
+    scaled_distances = data[0] * (distance_scale_factor if \
+                                  flavor != "logodds" else 1.0)
+
     if include_background:
-        ax.scatter(data[0],
-                data[1],
-                s = 1,
-                c = color_scheme.get("background","gray"),
-                alpha = 0.4,
-                )
+        ax.scatter(scaled_distances,
+                   data[1],
+                   s = 1,
+                   c = color_scheme.get("background","gray"),
+                   alpha = 0.4,
+        )
 
 
-    ax.fill_between(data[0],
+    ax.fill_between(scaled_distances,
                     data[2] - data[3],
                     data[2] + data[3],
                     alpha = 0.2,
                     color = color_scheme.get("envelope","blue"),
                     )
 
-    ax.set_title("Feature : {}".format(("" if feature is None else feature)))
-    ax.set_ylabel("Feature Value")
+    ax.set_title("{} : {}".format(feature_type,("" if feature is None else feature)),
+                 fontsize = kwargs.get("title_font_size",kwargs.get("fontsize",15)),
+                 )
+    ax.set_ylabel("{} Value".format(feature_type),
+                  fontsize = kwargs.get("label_font_size",kwargs.get("fontsize",15)),
+                  )
 
     if flavor == "normal":
-        ax.set_xlabel("Distance to vein")
+        ax.set_xlabel("Distance to vein",
+                      fontsize = kwargs.get("label_font_size",kwargs.get("fontsize",15)),
+                      )
 
     if flavor == "logodds":
 
@@ -267,16 +279,21 @@ def plot_expression_by_distance(ax : plt.Axes,
 
         d1 = ratio_order[0][0]
         d2 = ratio_order[1][0]
-        ax.set_xlabel(r"$\log(d_{}) - \log(d_{})$".format(d1,d2))
+        ax.set_xlabel(r"$\log(d_{}) - \log(d_{})$".format(d1,d2),
+                      fontsize = kwargs.get("label_font_size",kwargs.get("fontsize",15)),
+                      )
 
-    ax.plot(data[0],
+    ax.plot(scaled_distances,
             data[2],
             c = color_scheme.get("fitted","black"),
             linewidth = 2,
             label = ("none" if curve_label is None else curve_label),
             )
 
-
+    if "tick_fontsize" in kwargs.keys():
+        ax.tick_params(axis = "both",
+                       which = "major",
+                       labelsize = kwargs["tick_fontsize"])
 
 
 def smooth_fit(xs : np.ndarray,
@@ -422,7 +439,6 @@ class VeinData:
                 n_in_box = sum(in_box)
                 box_dists = dmat[in_box]
                 in_box = data.obs.index[in_box]
-                print(in_box)
 
                 if verbose:
                     print("Sample : {} | Vein {} | Spots used : {}".format(sample,
@@ -713,7 +729,7 @@ class Model:
         return results_df
 
 
-    def k_fold_validation(self,
+    def cross_validation(self,
                           k : int,
                           exclude_class : Optional[Union[List[str],str]]=None,
                           by : str = "sample",

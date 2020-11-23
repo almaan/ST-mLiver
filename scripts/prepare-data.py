@@ -27,6 +27,8 @@ class YAML_CONFIG:
     img = "image"
     mask = "mask"
     rgb = "rgb"
+    sample = "sample"
+    replicate = "replicate"
     def __init__():
         pass
 
@@ -172,6 +174,8 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
 
     uns = dict(img = img,
                mask = mask_long,
+               sample = data["sample"],
+               replicate = data["replicate"],
                )
 
 
@@ -187,6 +191,8 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
                        obsm = obsm,
                        uns = uns,
                        )
+    adata.obs["sample"] = data["sample"]
+    adata.obs["replicate"] = data["replicate"]
 
     return adata
 
@@ -203,6 +209,7 @@ def read_yaml(filename : Path,
     for k,p in pths.items():
         if k != YAML_CONFIG.rgb:
             pths[k] = Path(p)
+
 
     cnt = pd.read_csv(pths[YAML_CONFIG.cnt],
                       sep = '\t',
@@ -235,6 +242,19 @@ def read_yaml(filename : Path,
                 mask = pths[YAML_CONFIG.mask]
                 )
 
+    if YAML_CONFIG.sample not in pths.keys():
+        sample = osp.basename(args.input).split("-")[0]
+        data["sample"] = sample
+    else:
+        data["sample"] = pths[YAML_CONFIG.sample]
+
+    if YAML_CONFIG.replicate not in pths.keys():
+        replicate = osp.basename(args.input).split("-")[1]
+        data["replicate"] = replicate
+    else:
+        data["replicate"] = pths[YAML_CONFIG.replicate]
+
+
     if YAML_CONFIG.rgb in pths.keys():
         for k,v in pths[YAML_CONFIG.rgb].items():
             pths[YAML_CONFIG.rgb][k] = np.array(v) 
@@ -252,7 +272,7 @@ def main():
        "--input",
        type = str,
        required = True,
-       help = "data configuratio"\
+       help = "data configuration"\
        " file. Should be in YAML format",
        )
 

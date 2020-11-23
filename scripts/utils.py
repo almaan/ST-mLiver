@@ -200,14 +200,9 @@ def plot_veins(ax : plt.Axes,
     ax.axis("off")
 
 
-
-
-
 def plot_expression_by_distance(ax : plt.Axes,
                                 data : Tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray],
                                 feature : Optional[str] = None,
-                                sample_id: Optional[str] = None, 
-                                vein_id: Optional[int] = None,
                                 include_background : bool = True,
                                 curve_label : Optional[str]  = None,
                                 flavor : str = "normal",
@@ -259,7 +254,10 @@ def plot_expression_by_distance(ax : plt.Axes,
                   )
 
     if flavor == "normal":
-        ax.set_xlabel("Distance to vein",
+        unit = ("" if "distance_unit" not in\
+                kwargs.keys() else " [{}]".format(kwargs["distance_unit"]))
+
+        ax.set_xlabel("Distance to vein{}".format(unit),
                       fontsize = kwargs.get("label_font_size",kwargs.get("fontsize",15)),
                       )
 
@@ -333,13 +331,19 @@ class VeinData:
     def __init__(self,
                  data_set : Dict[str,ad.AnnData],
                  radius : float,
-                 get_individual_id : Optional[Callable] = None,
+                 # get_individual_id : Optional[Callable] = None,
                  use_genes : Optional[str] = None,
                  verbose : bool = False,
                  weight_by_distance : bool = False,
                  sigma : float = 1,
+                 individual_key : str = "sample",
                  )->None:
 
+        # TODO: currently in there's a mismatch between
+        # naming in code and data. The mapping is:
+        # h5ad-files : code
+        # sample : individual
+        # replicate : sample
 
         if use_genes is None:
             self.genes = pd.Index([])
@@ -351,17 +355,17 @@ class VeinData:
         self.data = {s:d.uns["mask"] for s,d in data_set.items()}
         self.samples = list(data_set.keys())
         self.n_samples = len(self.samples)
+        self.individuals = list(set([d.uns[individual_key] for\
+                                     d in data_set.values()]))
 
-        if get_individual_id is None:
-            get_individual_id = lambda x : x.split("-")[0]
+        self.sample_to_individual = {x:data_set[x].uns[individual_key] for\
+                                     x in self.samples}
 
-        self.sample_to_individual = {x:get_individual_id(x) for x in self.samples}
-        self.individual_to_sample = {v:[] for v in self.sample_to_individual.values()}
+        self.individual_to_sample = {d.uns[individual_key]:[] for\
+                                     d in data_set.values()}
+
         for sample in self.samples:
-            self.individual_to_sample[get_individual_id(sample)].append(sample)
-
-        self.individuals = list(self.individual_to_sample.keys())
-
+            self.individual_to_sample[self.sample_to_individual[sample]].append(sample)
 
         self._radius = radius
         self._verbose_state = verbose

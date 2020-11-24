@@ -3,4 +3,5 @@ multi-color.ipynb
 vein-distances.ipynb
 *.bak
 *.pyc
-data/*-analysis/
+res/*-analysis/
+data/h5ad-files

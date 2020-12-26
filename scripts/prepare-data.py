@@ -243,13 +243,13 @@ def read_yaml(filename : Path,
                 )
 
     if YAML_CONFIG.sample not in pths.keys():
-        sample = osp.basename(args.input).split("-")[0]
+        sample = osp.basename(filename).split("-")[0]
         data["sample"] = sample
     else:
         data["sample"] = pths[YAML_CONFIG.sample]
 
     if YAML_CONFIG.replicate not in pths.keys():
-        replicate = osp.basename(args.input).split("-")[1]
+        replicate = osp.basename(filename).split("-")[1]
         data["replicate"] = replicate
     else:
         data["replicate"] = pths[YAML_CONFIG.replicate]

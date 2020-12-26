@@ -9,3 +9,4 @@ build/
 dist/
 *.egg/
 hepaquery/.mypy_cache/
+res/stereoscope-res/

@@ -4,7 +4,7 @@ This repository contains data to produce data presented in "Title", these includ
 
 ## Structure
 
-*`data` - contains processed data to be used in the analysis
+* `data` - contains processed data to be used in the analysis
 	* `gene lists`- 
 	* `h5ad-cca`- 
 	* `meta`- 

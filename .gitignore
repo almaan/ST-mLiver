@@ -5,3 +5,4 @@ vein-distances.ipynb
 *.pyc
 res/*-analysis/
 data/h5ad-files
+res/stereoscope-res/

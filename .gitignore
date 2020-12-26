@@ -5,3 +5,7 @@ vein-distances.ipynb
 *.pyc
 res/*-analysis/
 data/h5ad-files
+build/
+dist/
+*.egg/
+hepaquery/.mypy_cache/

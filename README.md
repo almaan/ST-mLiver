@@ -73,7 +73,7 @@ mask: PATH_TO_MASK_FILE
 rgb:
   class1: [R1,G1,B1]
   class2: [R2,G2,B2]
-  class3: [R3,G3,B2]
+  class3: [R3,G3,B3]
 ```
 
 where `class1` indicate the name of the first class (e.g., central) and `[R1,G1,B1]` gives the RGB value that indicate class1 in the mask. This is what we refer to as a *configuration file*

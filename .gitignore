@@ -10,3 +10,8 @@ dist/
 *.egg/
 hepaquery/.mypy_cache/
 res/stereoscope-res/
+scripts/analysis-001.ipynb
+scripts/__pycache__/
+scripts/.ipynb_checkpoints/
+scripts/skip/
+

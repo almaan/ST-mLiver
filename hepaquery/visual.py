@@ -3,7 +3,6 @@ import pandas as pd
 import anndata as ad
 
 from scipy.spatial.distance import cdist
-from sklearn.linear_model import LogisticRegression as LR
 from functools import reduce
 
 import matplotlib.pyplot as plt
@@ -107,6 +106,98 @@ def get_plot_dims(n_elements : int,
             n_cols = n_rows +1
 
     return (n_rows,n_cols)
+
+
+def plot_veins(ax : plt.Axes,
+               data : ad.AnnData,
+               show_image : bool = False,
+               show_spots : bool = False,
+               show_id : bool = False,
+               **kwargs,
+               )->None:
+
+
+    """Plot veins in 2D spatial space
+
+    Parameters:
+    ----------
+
+    ax : plt.Axes
+        Axes object to add plots to
+    data : ad.AnnData
+        AnnData object holding vein information in the
+        uns['mask'] slot
+    show_image : bool (False)
+        set to True to show HE-image as background
+    show_spots : bool (False)
+        set to True to show spots
+    show_id : bool (False)
+        set to True to show vein id
+
+    """
+
+    if "alternative_colors" in kwargs:
+        type_color = kwargs["alternative_colors"]
+    else:
+        types = np.unique(data.uns["mask"]["type"].values)
+        types = np.sort(types)
+
+        cti = {v:k for k,v in\
+           enumerate(types)}
+
+        type_color = data.uns["mask"]["type"].map(cti)
+        type_color = type_color.values.flatten()
+
+
+    if show_image:
+        ax.imshow(data.uns["img"])
+    if show_spots:
+        ax.scatter(data.obs.x,
+                   data.obs.y,
+                   s = kwargs.get("spot_marker_size",80),
+                   c = "none",
+                   edgecolor = "black",
+                   )
+
+    ax.scatter(data.uns["mask"].x,
+        data.uns["mask"].y,
+        c = type_color,
+        s = kwargs.get("node_marker_size",2),
+        cmap = kwargs.get("cmap",plt.cm.Spectral_r),
+        )
+
+    if show_id:
+        id_label = kwargs.get("id_label","id")
+        assert "id" in data.uns["mask"].columns,\
+            "must have vein ids"
+
+        uni_veins = np.unique(data.uns["mask"][id_label].values)
+
+        for vein in uni_veins:
+            _pos = data.uns["mask"][id_label].values == vein
+            _crds = data.uns["mask"][["x","y"]].values[_pos,:]
+            _mns = _crds.min(axis=0).reshape(1,2)
+            align = kwargs.get("id_align","top_right")
+
+            if align == "center":
+                _xy = crd.mean(axis = 0)
+                _x = crd[0]
+                _y = crd[1]
+            else:
+                _pxy = np.argmax(np.linalg.norm(_crds - _mns))
+                _x = _crds[_pxy,0]
+                _y = _crds[_pxy,1]
+
+            ax.text(_x,
+                    _y,
+                    s = vein,
+                    fontsize = kwargs.get("id_fontsize",10))
+
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+
 
 
 def plot_expression_by_distance(ax : plt.Axes,

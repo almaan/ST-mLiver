@@ -74,7 +74,10 @@ class VeinData:
             for data in data_set.values():
                 self.genes = self.genes.union(data.var.index)
         else:
-            self.genes = pd.Index([x for x in use_genes if x in data.var.index])
+            in_data_genes = pd.Index([])
+            for data in data_set.values():
+                in_data_genes = in_data_genes.union(data.var.index)
+            self.genes = pd.Index([x for x in use_genes if x in in_data_genes])
 
         self.data = {s:d.uns["mask"] for s,d in data_set.items()}
         self.samples = list(data_set.keys())
@@ -93,9 +96,10 @@ class VeinData:
 
         self._radius = radius
         self._sigma = sigma
-        self._weight_by_distance
+        self._weight_by_distance = weight_by_distance
         self._verbose_state = verbose
-        self._build(weight_by_distance = self._weight_by_distance,
+        self._build(data_set,
+                    weight_by_distance = self._weight_by_distance,
                     sigma = self._sigma,
                     )
 
@@ -155,6 +159,7 @@ class VeinData:
 
 
     def _build(self,
+               data_set : Dict[str,ad.AnnData],
                weight_by_distance : Optional[bool] = False,
                sigma : Optional[float] = 1,
                verbose : Optional[bool] = None,
@@ -162,7 +167,10 @@ class VeinData:
 
         """ build expression profiles
 
-
+        Parameters:
+        ----------
+        data_set : Dict[str,ad.AnnData]
+            Dictionary with AnnData files, one for each sample
         weight_by_distance : bool (False)
              weight the assembled vein expression profiles
              by distance to profile (a form of weighted average)
@@ -202,8 +210,7 @@ class VeinData:
 
         _id_to_type = {}
 
-        for sample,data in self.data_set.items():
-            # set variables for ease of access
+        for sample,data in data_set.items():
             vein_data = data.uns["mask"]
             data_crd = data.obs[["x","y"]].values
 
@@ -517,6 +524,8 @@ class Model:
             if isinstance(obj,str):
                 if obj != "all":
                     objs.append(pd.Index([obj]))
+                else:
+                    objs.append(obj)
             elif isinstance(obj,list):
                 objs.append(pd.Index(obj))
 
@@ -602,12 +611,16 @@ class Model:
         _objs = [predict_on,exclude_class]
         objs : List[pd.Index] = []
 
-        for obj in objs:
+        for obj in _objs:
             if isinstance(obj,str):
                 if obj != "all":
                     objs.append(pd.Index([obj]))
+                else:
+                    objs.append(obj)
             elif isinstance(obj,list):
                 objs.append(pd.Index(obj))
+            else:
+                objs.append(None)
 
         predict_on,exclude_class = objs
 

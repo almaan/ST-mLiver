@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 
 from scipy.spatial.distance import cdist
-from sklearn.linear_model import LogisticRegression as LR
 from functools import reduce
 from skmisc.loess import loess
 

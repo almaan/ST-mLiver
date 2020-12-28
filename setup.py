@@ -21,4 +21,13 @@ setuptools.setup(
         "Operating System :: Tested on Mac OS and Linux",
     ],
     python_requires='>=3.7',
+    install_requires=[
+        "scikit-misc",
+        "numpy>=1.19.0",
+        "pandas>=1.0.0",
+        "anndata>=0.7.5",
+        "scipy>=1.5.4",
+        "scikit-learn>=0.23.2 ",
+        "matplotlib>=3.3.3",
+    ]
 )

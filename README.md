@@ -3,10 +3,9 @@
 This repository contains data to produce data presented in "Title", these include data, scripts ..
 
 
-
 ## Structure
 
-* `data` - contains processed data to be used in the analysis
+* `data` - contains processed data to be used in the analysis (files must be downloaded from an external resource, see below)
 	* `gene lists`- 
 	* `h5ad-cca`- 
 	* `meta`- 
@@ -21,6 +20,8 @@ This repository contains data to produce data presented in "Title", these includ
 
 * `res` - holds results generated from the analysis
 * `rsc` - are resources of interest
+* `hepaquery` - files constituting the `hepaquery` package
+* `setup.py` - installation file for `hepaquery` module
 
 ## hepaquery Installation
 To facilitate reproduction of our results and enable easy exploration of similar

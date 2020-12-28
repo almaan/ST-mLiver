@@ -1,8 +1,0 @@
-count_data: "/Users/franziskahildebrandt/st.distance/stdata/CN73_norm_CCA_D1.tsv"
-spot_data: "/Users/franziskahildebrandt/st.distance/st-spot-coordinates/CN73_Liver_D1_spot-selection.tsv"
-image: "/Users/franziskahildebrandt/st.distance/HE-images-0.01-scale/C073_Liver_HE_D1_0.1.jpg"
-mask: "/Users/franziskahildebrandt/st.distance/mask/ST_liver_CN73_D1_3types_mask_0.1.png"
-rgb:
-  central: [255,0,0]
-  portal: [0,0,255]
-  unknown: [0,255,0]

@@ -89,7 +89,7 @@ parameters that may be used, simply do `python3 ./prepare-data.py -h`.
 
 ## Accessing Data
 
-While GitHub supports storage of large files via the LFS system, we have placed our files at an external site to prevent unnecessary use of resources. The count matrices, spot files, HE-images and masks can be accessed at [this](link). To download all data and place it in the expected (by the scripts) location, you can also go to `scripts`, open a terminal and do:
+While GitHub supports storage of large files via the LFS system, we have placed our files at an external site to prevent unnecessary use of resources. The count matrices, spot files, HE-images and masks can be accessed at [this](link) link. To download all data and place it in the expected (by the scripts) location, you can also go to `scripts`, open a terminal and do:
 
 ```sh
 $> chmod +x ./fetch-data.sh

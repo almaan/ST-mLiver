@@ -16,11 +16,31 @@ from typing import *
 
 def iprint(s : str,
            )->None:
+    """ info print
+
+    Parameters:
+    ----------
+
+    s : str
+        string to print with info wrapper
+
+    """
 
     print("[INFO] : {}".format(s))
 
 def eprint(s : str,
            )->None:
+
+    """ error print
+
+    Parameters:
+    ----------
+
+    s : str
+        string to print with error wrapper
+
+    """
+
 
     print("[ERROR] : {}".format(s))
 
@@ -29,12 +49,39 @@ def eprint(s : str,
 
 def smooth_fit(xs : np.ndarray,
                ys : np.ndarray,
-               dist_thrs : float = 0,
+               dist_thrs : Optional[float] = None,
                )->Tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+
+    """Smooth curve using loess
+
+    will perform curve fitting using skmisc.loess,
+    points above 'dist_thrs' will be excluded.
+
+    Parameters:
+    ----------
+
+    xs : np.ndarray
+        x values
+    ys : np.ndarray
+        y values
+    dist_thrs : float
+        exclude (x,y) tuples where x > dist_thrs
+
+    Returns:
+    -------
+    A tuple with included x and y-values (xs',ys'), as well
+    as fitted y-values (ys_hat) together with associated
+    standard errors. The tuple is on the form
+    (xs',ys',y_hat,std_err)
+
+    """
 
     srt = np.argsort(xs)
     xs = xs[srt]
     ys = ys[srt]
+
+    if dist_thrs is None:
+        dist_thrs = np.inf
 
     keep = np.abs(xs) < dist_thrs
     xs = xs[keep]

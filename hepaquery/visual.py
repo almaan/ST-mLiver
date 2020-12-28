@@ -14,12 +14,40 @@ from typing import *
 def get_figure(n_elements : int,
                n_cols : Optional[int] = None,
                n_rows : Optional[int] = None,
-               side_size : float = 3,
+               side_size : float = 3.0,
                sharey : bool = False,
                sharex : bool = False,
                )->Tuple[plt.Figure,plt.Axes]:
 
-    n_rows,n_cols = get_plot_dims(n_elements,n_cols,n_rows)
+
+    """ Get figure and axes objects
+
+    Parameters:
+    ----------
+
+    n_elements : int
+        number of elements to plot
+    n_cols : Optional[int] (None)
+        desired number of columns
+    n_rows : Optional[int] (None)
+        desired number of rows
+    side_size : float (3.0)
+        size of each subplot (one per element)
+    sharey : bool (False)
+        set to True to share y-axis
+    sharex : bool (False)
+        set to True to share x-axis
+
+    Returns:
+    -------
+    Tuple with Matplotlib Figure
+    and Axes objects.
+
+    """
+
+    n_rows,n_cols = get_plot_dims(n_elements,
+                                  n_cols,
+                                  n_rows)
     figsize = (n_cols * side_size,
                n_rows * side_size,
                )
@@ -44,6 +72,28 @@ def get_plot_dims(n_elements : int,
                   n_rows : Optional[int] = None,
                   )->Tuple[int,int]:
 
+    """Get dimensions of plot
+
+    will adjust row and column numbers
+    according to the specified parameters. If
+    n_cols and n_rows are both are None, then
+    a square array of plots will be used.
+
+    Parameters:
+    ----------
+
+    n_elements : int
+        number of elements to plot
+    n_cols : Optional[int] (None)
+        desired number of columns
+    n_rows : Optional[int] (None)
+        desired number of rows
+
+    Returns:
+    --------
+    A tuple with the form (n_rows,n_cols)
+
+    """
     round_fun = lambda x: int(np.ceil(n_elements/x))
     if n_cols is not None:
         n_rows = round_fun(n_cols)
@@ -72,6 +122,60 @@ def plot_expression_by_distance(ax : plt.Axes,
                                 distance_scale_factor : float = 1.0,
                                 **kwargs,
                                 )->None:
+
+    """Generate feature by distance plots
+
+    Function for seamless production of feature
+    by distance plots.
+
+    Parameters:
+    ----------
+
+    ax : plt.Axes
+        axes object to plot data in
+    data : Tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]
+        Tuple of data to plot, should be in form :
+        (xs,ys,y_hat,std_err), the output which
+        utils.smooth_fit produces.
+    feature : Optional[str] (None)
+        Name of plotted feature, set to None to exclude this
+        information.
+    include_background : bool (True)
+        Set to True to include data points used
+        to fit the smoothed data
+    curve_label : Optional[str] (None)
+        label of plotted data. Set to None to exclude
+        legend.
+    flavor : str = "normal",
+        flavor of data, choose between 'normal' or
+        'logodds'.
+    color_scheme : Optional[Dict[str,str]] (None)
+        dictionary providing the color scheme to be used.
+        Include 'background':'color' to change color
+        original data, include 'envelope':'color' to set
+        color of envelope, include 'feature_class':'color' to
+        set color of class.
+    ratio_order : List[str] (["central","portal"])
+        if logodds flavor is used, then specify which
+        element was nominator (first element) and
+        denominator (second element).
+    list_flavor_choices : bool (False)
+        set to True to list flavor choices
+    feature_type : str ("Feature")
+        Name of feature to plot, will be prepended to title
+        as Feature : X. Set to None to only plot name X. Set
+        to None to exclude feature type from being indicated
+        in title and y-axis.
+    distance_scale_factor : float (1.0)
+        scaling factor to multiply distances with
+
+    Returns:
+    -------
+
+    Tuple with Matplotlib Figure and Axes object, containing
+    feature by distance plots.
+
+    """
 
     flavors = ["normal","logodds","single_vein"]
     if list_flavor_choices:
@@ -105,11 +209,14 @@ def plot_expression_by_distance(ax : plt.Axes,
                     color = color_scheme.get("envelope","grey"),
                     )
 
-    ax.set_title("{} : {}".format(feature_type,("" if feature is None else feature)),
-                 fontsize = kwargs.get("title_font_size",kwargs.get("fontsize",15)),
+    ax.set_title("{} : {}".format(("" if feature_type is None else feature_type),
+                                  ("" if feature is None else feature)),
+                 fontsize = kwargs.get("title_font_size",
+                                       kwargs.get("fontsize",15)),
                  )
-    ax.set_ylabel("{} Value".format(feature_type),
-                  fontsize = kwargs.get("label_font_size",kwargs.get("fontsize",15)),
+    ax.set_ylabel("{} Value".format(("" if feature_type is None else feature_type)),
+                  fontsize = kwargs.get("label_font_size",
+                                        kwargs.get("fontsize",15)),
                   )
 
     if flavor == "normal":
@@ -117,7 +224,8 @@ def plot_expression_by_distance(ax : plt.Axes,
                 kwargs.keys() else " [{}]".format(kwargs["distance_unit"]))
 
         ax.set_xlabel("Distance to vein{}".format(unit),
-                      fontsize = kwargs.get("label_font_size",kwargs.get("fontsize",15)),
+                      fontsize = kwargs.get("label_font_size",
+                                            kwargs.get("fontsize",15)),
                       )
 
     if flavor == "logodds":
@@ -163,6 +271,30 @@ def visualize_prediction_result(results : pd.DataFrame,
                                 accuracy_colname : str = "accuracy",
                                 target_colname : str = "pred_on",
                                 )->Tuple[plt.Figure,plt.Axes]:
+
+    """Visualize Prediction Results
+
+    Generates a Bar Graph where the accuracy of each
+    iteration in the cross validation.
+
+    results : pd.DataFrame
+        prediction results obtained from the
+        structures.Model.cross_validation
+        method
+    bar_width : float (0.8)
+        width of a single bar in the results display
+    accuracy_colname : str ("accuracy")
+        name of column where accuracy values are given
+    target_colname : str ("pred_on")
+        name of columns where target names are found
+
+    Returns:
+    --------
+    Tuple of Matplotlib Figure and Axes object holding the
+    bar graph illustrating the results.
+
+
+    """
 
     fig,ax = plt.subplots(1,1, figsize = (7,4))
 

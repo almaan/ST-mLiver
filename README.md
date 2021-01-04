@@ -12,9 +12,9 @@ This repository provides data and code to reproduce data presented in "Spatial T
 	* `meta`- 
 	* `stereoscope`- 
 * `scripts` - contains processing scripts and notebooks
-	* `R-markdown-methods.Rmd` - contains a R markdown script to perform canonical correlation analyis, clustering and DGEA, tissue visualization, correlation analysis, visualization of single cell integration using single cell data of the [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8) and comparative analyses with published data from [Halpern et al](https://www.nature.com/articles/nature21065)
-	* `MultiCCA.R` - contains code for the modified canonical correlation analysis function used in `R-markdown-methods.Rmd`
-    * `cluster-interaction-analysis.ipynb` - notebook outlining the cluster interaction analysis (used to produce Supplementary Image X)
+	* `Liver-ST.Rmd` - contains a R markdown script to perform canonical correlation analyis, clustering and DGEA, tissue visualization, correlation analysis, visualization of single cell integration using single cell data of the [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8) and comparative analyses with published data from [Halpern et al](https://www.nature.com/articles/nature21065)
+	* `MultiCCA.R` - contains code for the modified canonical correlation analysis function used in `Liver-ST.Rmd`
+    * `cluster-interaction-analysis.ipynb` - notebook outlining the cluster interaction analysis (used to produce Supplementary Image 2)
     * `make-gene-list.R` - script to generate list of highly variable genes (hvgs) to use in `stereoscope` mapping.
     * `prepare-data.py` - program with CLI to generate `h5ad` files for spatial analysis (in `vein-analysis.ipynb`). See
     * `vein-analysis.ipynb` - notebook outlining the feature by distance analysis and vein type classification/prediction based on NEPs.

@@ -20,5 +20,7 @@ echo "Moving files to data dir"
 cp -r tmpdir/Hepaquery_data/* data/
 rm -r tmpdir
 echo "Data Fetching Completed"
+echo "Unzip h5ad files"
+gunzip data/h5ad-cca/*gz
 
 

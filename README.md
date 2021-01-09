@@ -153,12 +153,20 @@ parameters that may be used, simply do `python3 ./prepare-data.py -h`.
 
 ## Data Access
 
-While GitHub supports storage of large files via the LFS system, we have placed our files at an external site to prevent unnecessary use of resources. The count matrices, spot files, HE-images and masks can be accessed at [this](link) link. To download all data and place it in the expected (by the scripts) location, you can also go to `scripts`, open a terminal and do:
+While GitHub supports storage of large files via the LFS system, we have placed
+our files at an external site to prevent unnecessary use of resources. The count
+matrices, spot files, HE-images and masks can be accessed at [this](10.5281/zenodo.4399655) link.
+To download all data and place it in the expected (by the scripts) location, you
+can also go to `scripts`, open a terminal and do:
 
 ```sh
 $> chmod +x ./fetch-data.sh
-$> ./fetch-data.sh
+$> ./fetch-data.sh ZENDO_LINK
 ```
+
+In case the above does not work for you, simply go to the link referenced above,
+download the files and place the content of `Hepaquery_data.zip` in the `data`
+folder. This should be equivalent to what the script is doing for you.
 
 ## License
 This work is covered under the **MIT License**.

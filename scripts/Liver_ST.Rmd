@@ -1,0 +1,1429 @@
+---
+title: "ST-analysis"
+author: "Franziska Hildebrandt"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+````{r include = FALSE}
+
+knitr::opts_chunk$set(warning = F, fig.width = 8, fig.height = 6, error = T, message = F)
+
+```
+
+
+
+# ST-Analysis for murine Liver
+
+This is an RMarkdown script to analyze spatial transcriptomics (ST) data of mouse liver tissue. The script takes spatial transcriptomics data as input. This data includes pre-processed count-matrices in tsv format. Pre-processing was performed using the ST pipeline ST Pipeline (v 1.7.6) [citation], available at: [link]. Parameters for pre-processing can be found in the materials and methods section of this manuscript. Additional input files include spot-coordinate files for spots under the tissue in tsv format and downscaled (10% of original size) brightfield images of the investigated tissue sections. All paths to the respective data is stored in an individual infotable for the different sequencing  experiments. Analysis performed in this Markdown includes:  
+1. Filtering and normalization of count-data 
+2. Dimensionality reduction and clustering
+3. Visualization of features (i.e. genes,clusters, etc.) on spots under the tissue 
+4.  Differential gene expression analysis
+5. Spatial autocorrelation of ST data
+6. Analysis of publicly available single cell data [citations] available here [link]
+7. Correlation analysis between single cell data and ST data
+8. Pathway analysis 
+9. Visualization of *stereoscope* [citation] data
+
+
+
+```{r, load required packages,warning = FALSE, results='hide'}
+
+library(Seurat)
+library(dplyr)
+library(STutility)
+library(tidyverse)
+library(spdep)
+library(gprofiler2)
+library(corrplot)
+library(readxl)
+library(xlsx)
+library(stringr)
+library(scico)
+library(RColorBrewer)
+
+```
+
+### Filtering and Normalization for samples
+Load all samples into the environment to run first filterings and read count normalizations,  
+check for data quality to exclude samples for downstream analysis
+
+First the annotation file for the creation of the object, translating Ensembl IDs to gene symbols is imported
+
+```{r, annotation table}
+ensids <- read.table(file = list.files(system.file("extdata", package = "STutility"), full.names = T, pattern = "mouse_genes"), header = T, sep = "\t", stringsAsFactors = F)
+```
+
+
+Import the infotable including paths to the count matrix, coordinate metadata and images and create the object
+
+**Sample 1 (caudate lobe)**
+
+```{r, sample1 (se1), CN73, warning=FALSE, results='hide'}
+
+infoTable <- read.table("/Users/franziskahildebrandt/ST-mLiver/data/sample_1/infotable-sample1-CN73.csv", sep=";", header=T, stringsAsFactors = F)[c(1, 2, 3), ]
+#Add smaple IDs to infotable: Becomes important for later normalizations
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+se1 <- InputFromTable(infotable = infoTable, #Run in console 
+                   platform = "2k", # set the platform
+                   min.gene.count = 100, 
+                      min.gene.spots = 5,
+                      min.spot.count = 500, 
+                      annotation = ensids,
+                      transpose = TRUE)
+
+se1 <- SetIdent(se1, value = "sample_id")
+
+```
+
+Run some quality controls for the created object
+
+```{r, Quality controls se1, fig.height=4, fig.width=8}
+
+se1[["percent.mt"]] <- PercentageFeatureSet(se1, pattern = "mt-")
+
+VlnPlot(se1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+Filter for protein-coding genes
+
+```{r, filtering se1}
+se1 <- se1[-grep(pattern = "mt-", x = rownames(se1)), ]
+protein_coding <- subset(ensids, gene_type == "protein_coding")$gene_name
+protein_coding_match <- intersect(rownames(se1), protein_coding)
+# Keep protein coding genes
+se1 <- se1[which(rownames(se1) %in% protein_coding_match), ]
+
+```
+
+Run some more quality controls and data exploration on the filtered data:  
+- get number of gene attributes
+- get number of spot attributes
+- get mean-variance realtionship
+- get mean.detection-rate relationship 
+
+```{r, statistics se1, fig.height=4, fig.width=8}
+umi_data <- GetAssayData(object = se1, slot = "counts", assay = "RNA")
+dim(umi_data)
+#Gene attributes
+gene_attr <- data.frame(mean = rowMeans(umi_data),
+                        detection_rate = rowMeans(umi_data > 0),
+                        var = apply(umi_data, 1, var), 
+                        row.names = rownames(umi_data)) %>%
+  mutate(log_mean = log10(mean), log_var = log10(var))
+# Obtain spot attributes from seurat meta.data slot
+spot_attr <- se1[[c("nFeature_RNA", "nCount_RNA")]]
+
+p1 <- ggplot(gene_attr, aes(log_mean, log_var)) + 
+  geom_point(alpha = 0.3, shape = 16) + 
+  geom_density_2d(size = 0.3) +
+  geom_abline(intercept = 0, slope = 1, color = 'red') +
+  ggtitle("Mean-variance relationship")
+
+# add the expected detection rate under Poisson model
+x = seq(from = -2, to = 2, length.out = 1000)
+poisson_model <- data.frame(log_mean = x, detection_rate = 1 - dpois(0, lambda = 10^x))
+p2 <- ggplot(gene_attr, aes(log_mean, detection_rate)) + 
+  geom_point(alpha=0.3, shape=16) + 
+  geom_line(data=poisson_model, color='red') +
+  ggtitle("Mean-detection-rate relationship")
+#pdf("sCellCorellationplots.pdf")
+cowplot::plot_grid(p1, p2)
+#dev.off()
+```
+
+Normalize the data 
+
+```{r, normalize se1, results='hide'}
+se1 <- SCTransform(se1, vars.to.regress = c("nFeature_RNA")) 
+```
+
+**Run the same analysis for the remaining two samples**
+
+**Sample 2 (right lobe)**
+
+```{r, sample2 (se2), CN16, warning = FALSE, results= "hide"}
+
+infoTable <- read.table("/Users/franziskahildebrandt/ST-mLiver/data/sample_2/infotable-190628-CN16.csv", sep=";", header=T, stringsAsFactors = F)[c(1,2,3,4), ]
+#Add sample IDs to infotable: Becomes important for later normalizations
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+se2 <- InputFromTable(infotable = infoTable, #Run in console 
+                     platform = "2k", # set the platform
+                     min.gene.count = 100, 
+                     min.gene.spots = 5,
+                     min.spot.count = 500, 
+                     annotation = ensids,
+                     transpose = TRUE)
+
+se2 <- SetIdent(se2, value = "sample_id")
+
+```
+
+
+```{r, Quality controls se2,fig.height=4, fig.width=8}
+
+se2[["percent.mt"]] <- PercentageFeatureSet(se2, pattern = "mt-")
+
+VlnPlot(se2, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+Filter for protein-coding genes
+
+```{r, filtering se2}
+se2 <- se2[-grep(pattern = "mt-", x = rownames(se2)), ]
+protein_coding <- subset(ensids, gene_type == "protein_coding")$gene_name
+protein_coding_match <- intersect(rownames(se2), protein_coding)
+# Keep protein coding genes
+se2 <- se2[which(rownames(se2) %in% protein_coding_match), ]
+
+```
+
+Run some more quality controls and data exploration on the filtered data:  
+- get number of gene attributes
+- get number of spot attributes
+- get mean-variance realtionship
+- get mean.detection-rate relationship 
+
+```{r, statistics se2, fig.height=4, fig.width=8}
+umi_data <- GetAssayData(object = se2, slot = "counts", assay = "RNA")
+dim(umi_data)
+#Gene attributes
+gene_attr <- data.frame(mean = rowMeans(umi_data),
+                        detection_rate = rowMeans(umi_data > 0),
+                        var = apply(umi_data, 1, var), 
+                        row.names = rownames(umi_data)) %>%
+  mutate(log_mean = log10(mean), log_var = log10(var))
+# Obtain spot attributes from seurat meta.data slot
+spot_attr <- se2[[c("nFeature_RNA", "nCount_RNA")]]
+
+p1 <- ggplot(gene_attr, aes(log_mean, log_var)) + 
+  geom_point(alpha = 0.3, shape = 16) + 
+  geom_density_2d(size = 0.3) +
+  geom_abline(intercept = 0, slope = 1, color = 'red') +
+  ggtitle("Mean-variance relationship")
+
+# add the expected detection rate under Poisson model
+x = seq(from = -2, to = 2, length.out = 1000)
+poisson_model <- data.frame(log_mean = x, detection_rate = 1 - dpois(0, lambda = 10^x))
+p2 <- ggplot(gene_attr, aes(log_mean, detection_rate)) + 
+  geom_point(alpha=0.3, shape=16) + 
+  geom_line(data=poisson_model, color='red') +
+  ggtitle("Mean-detection-rate relationship")
+#pdf("sCellCorellationplots.pdf")
+cowplot::plot_grid(p1, p2)
+#dev.off()
+```
+
+Normalize the data 
+
+```{r, normalize se2, warning=FALSE, results='hide'}
+se2 <- SCTransform(se2, vars.to.regress = c("nFeature_RNA")) 
+```
+
+**Sample3 caudate lobe**
+
+
+```{r, Sample3 (se3), CN65, warning=FALSE, results='hide'}
+
+infoTable <- read.table("/Users/franziskahildebrandt/ST-mLiver/data/sample_3/infotable-191021-CN65.csv", sep=";", header=T, stringsAsFactors = F)[c(1, 2, 3, 4, 5), ]
+#Add sample IDs to infotable: Becomes important for later normalization
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+
+se3 <- InputFromTable(infotable = infoTable, #Run in console 
+                     platform = "2k", # set the platform
+                     min.gene.count = 100, 
+                     min.gene.spots = 5,
+                     min.spot.count = 500, 
+                     annotation = ensids,
+                     transpose = TRUE)
+
+se3 <- SetIdent(se3, value = "sample_id")
+
+```
+
+```{r, Quality controls se3, fig.height=4, fig.width=8}
+
+se3[["percent.mt"]] <- PercentageFeatureSet(se3, pattern = "mt-")
+
+VlnPlot(se3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+Filter for protein-coding genes
+
+```{r, filtering se3}
+
+se3 <- se3[-grep(pattern = "mt-", x = rownames(se3)), ]
+protein_coding <- subset(ensids, gene_type == "protein_coding")$gene_name
+protein_coding_match <- intersect(rownames(se3), protein_coding)
+# Keep protein coding genes
+se3 <- se3[which(rownames(se3) %in% protein_coding_match), ]
+
+```
+
+Run some more quality controls and data exploration on the filtered data:  
+- get number of gene attributes
+- get number of spot attributes
+- get mean-variance realtionship
+- get mean.detection-rate relationship 
+
+```{r, statistics se3, fig.height=4, fig.width=8}
+umi_data <- GetAssayData(object = se3, slot = "counts", assay = "RNA")
+dim(umi_data)
+#Gene attributes
+gene_attr <- data.frame(mean = rowMeans(umi_data),
+                        detection_rate = rowMeans(umi_data > 0),
+                        var = apply(umi_data, 1, var), 
+                        row.names = rownames(umi_data)) %>%
+  mutate(log_mean = log10(mean), log_var = log10(var))
+# Obtain spot attributes from seurat meta.data slot
+spot_attr <- se3[[c("nFeature_RNA", "nCount_RNA")]]
+
+p1 <- ggplot(gene_attr, aes(log_mean, log_var)) + 
+  geom_point(alpha = 0.3, shape = 16) + 
+  geom_density_2d(size = 0.3) +
+  geom_abline(intercept = 0, slope = 1, color = 'red') +
+  ggtitle("Mean-variance relationship")
+
+# add the expected detection rate under Poisson model
+x = seq(from = -2, to = 2, length.out = 1000)
+poisson_model <- data.frame(log_mean = x, detection_rate = 1 - dpois(0, lambda = 10^x))
+p2 <- ggplot(gene_attr, aes(log_mean, detection_rate)) + 
+  geom_point(alpha=0.3, shape=16) + 
+  geom_line(data=poisson_model, color='red') +
+  ggtitle("Mean-detection-rate relationship")
+#pdf("sCellCorellationplots.pdf")
+cowplot::plot_grid(p1, p2)
+#dev.off()
+```
+
+Normalize the data 
+
+```{r, normalize se3, warning=FALSE, results='hide'}
+se3 <- SCTransform(se3, vars.to.regress = c("nFeature_RNA")) 
+```
+
+
+## Canonical Correlation analysis (CCA)
+
+This R markdown performs a MultiCCA analyis to identify common sources of variation between multiple Datasets. Originally CCA from the seurat package performs this analysis for only 2 samples at the same time. Here we can perform the analyis for more samples.  
+
+MultiCCA will also combine all objects into a single object and stores the canonical vectors (the vectors that project each dataset into maximally correlated subspaces). The original dataset identity is stored as a column in object@meta.data  
+
+First, the we create subsets to only keep data of highest quality in the objects, e.g. we want to exclude certain samples in the analysis due to e.g. high variability in sequencing depth  
+
+```{r subset data, message=FALSE, warning=FALSE,results='hide'}
+
+#se1 (CN73)
+
+se1$sample_id <- plyr::mapvalues(
+    x = se1$sample_id, 
+    from = c("sample_1", "sample_2", "sample_3"), 
+    to = c("1", "2", "3"))
+se1 <- SCTransform(se1, vars.to.regress = "sample_id")
+
+#se2 (CN16)
+
+se2 <- SubsetSTData(se2, spots = rownames(subset(se2[[]], sample_id %in% c("sample_2","sample_4"))))
+se2$sample_id <- plyr::mapvalues(
+    x = se2$sample_id, 
+    from = c("sample_2", "sample_4"), 
+    to = c("4","5"))
+#Only the new freezing protocol should be included here
+se2 <- SCTransform(se2, vars.to.regress = "sample_id")
+
+#se3 (CN65)
+se3 <- SubsetSTData(se3, spots = rownames(subset(se3[[]], sample_id %in% c("sample_3","sample_4", "sample_5"))))
+se3$sample_id <- plyr::mapvalues(
+    x = se3$sample_id, 
+    from = c("sample_3","sample_4", "sample_5"), 
+    to = c("6", "7", "8"))
+#only the non-stained samples should be included here 
+se3 <- SCTransform(se3, vars.to.regress = "sample_id")
+
+```
+
+The MultiCCA function is called from a function optimized for an input of multiple objects (>2) run and the samples are normalized for the sample id. dimensionality reduction in performed using non-negative matrix factorization and the results and quality controls can be visualized in spot-space
+
+
+```{r CCA, Run MultiCCA, results= "hide" }
+
+source("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/MultiCCA-200421.R", echo = TRUE, keep.source = TRUE)
+
+se.cca <- RunMultiCCA(object.list = list(se1, se2, se3), add.cell.ids = c("A", "B", "C"), num.ccs = 10, verbose = TRUE)
+
+se.cca <- SCTransform(se.cca, vars.to.regress = "sample_id")
+
+se.cca <- RunNMF(se.cca)
+
+```
+
+```{r, visualize CCA analysis statistics, fig.height=4, fig.width=8}
+
+se.cca <- SetIdent(se.cca, value="sample_id")
+
+VlnPlot(se.cca, features = "nFeature_RNA")
+
+ST.FeaturePlot(se.cca, features = "nFeature_RNA")
+
+```
+
+Visualize the results of the CCA analysis on the tissue and in non-linear low-dimensional space (UMAP)
+
+
+```{r Plot the data, fig.height=8, fig.width=12}
+
+ST.DimPlot(object = se.cca, indices =2 , reduction = "cca", dims = 1:5, ncol = 5, pt.size = 1.5, cols = rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")))
+ST.DimPlot(object = se.cca, indices =2 ,reduction = "cca", dims = 6:10, ncol = 5, pt.size = 1.5, cols = rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")))
+
+DimPlot(object = se.cca, reduction = "cca", group.by = "sample_id", pt.size = 0.5)
+```
+
+```{r, visualize first canonical factor, fig.height=4, fig.width=8}
+VlnPlot(object = se.cca, features = "CC_1", group.by = "sample_id")
+#Genes driving the CC vectors on the tissue
+ProjectDim(se.cca, reduction = "cca", dims.print = 1:10)
+
+```
+
+To visualize the data on the Brightfield images, the images need to be loaded into the object, masked to remove the background, and aligned towards each other. Since we are using samples of different sections - we need to align them manually instead of using the autmated alignment of the package. 
+
+```{r, Load images in CCA object, results= "hide"}
+
+se.cca <- LoadImages(se.cca) # resolution can be specified when loading the images using the xdim argument in the function 
+
+se.cca <- MaskImages(se.cca)
+
+#se.cca <- AlignImages(se.cca)
+
+#se.cca <- ManualAlignImages(se.cca)
+
+```
+
+```{r, plot images}
+#You can check whether the images are loaded, masked and aligned as expected using: 
+ImagePlot(se.cca)
+```
+
+After deciding which dimensions to include in clustering analysis, we perform the clustering analysis as described in the methods part of this publication and in the function description of the Seurat package and tutorial.
+
+```{r, Clustering and Vizualization of dimensionalty reduction and clustering, fig.width= 10, fig.height= 7.5}
+
+dims.use <- c(1,3,4,7,8,9,10) #
+se.cca <- se.cca %>%
+  FindNeighbors(reduction = "cca", dims = dims.use) %>%
+  FindClusters(resolution = 0.3) %>%
+  RunUMAP(reduction = "cca", dims = dims.use, min.dist = 0.1, spread = 0.5)
+
+se.cca <- SetIdent(se.cca, value = "seurat_clusters")
+
+cluster.cols = c("yellow3", "blue3", "red3", "turquoise3","darkorange1","green4")
+
+ST.FeaturePlot(se.cca, features = "seurat_clusters", split.labels = F, indices = 2,pt.size = 1.5, custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right"))
+
+DimPlot(se.cca, pt.size = 1 , label = T, cols = cluster.cols)
+
+#Overlay all cluster on the tissue
+FeatureOverlay(se.cca, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca[[]], seurat_clusters == c(1,2))),sampleids = 2, pt.alpha = 0.8, pt.size = 2, cols = c("blue3", "red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F)
+
+#Overlay a subset of clusters on the tissue, e.g. cluster 5
+FeatureOverlay(se.cca, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca[[]], seurat_clusters == c(1,2))),sampleids = 2, pt.alpha = 0.8, pt.size = 2, cols = c("blue3", "red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F)
+
+
+```
+
+## Differential gene expression analysis
+
+To identify characteristic markers genes of the previously identified clusters differential genes expression is performed. To specify enriched genes in the individual clusters we set the parameters to only include markers with a positive log thereshold
+
+
+```{r, find all markers}
+#Find the markers for all clusters
+se.cca.markers <- FindAllMarkers(se.cca) 
+head(se.cca.markers)
+
+```
+
+```{r, find markers for each cluster}
+
+#Find indivdual markers
+markers.cca.1 <- FindMarkers(se.cca, ident.1 = 1, only.pos = T)
+markers.cca.2 <- FindMarkers(se.cca, ident.1 = 2, only.pos = T)
+markers.cca.3 <- FindMarkers(se.cca, ident.1 = 3, only.pos = T)
+markers.cca.4 <- FindMarkers(se.cca, ident.1 = 4, only.pos = T)
+markers.cca.5 <- FindMarkers(se.cca, ident.1 = 5, only.pos = T)
+
+#Filter for most siginificant markers
+markers.cca.1 <- subset(markers.cca.1, p_val_adj < 0.05 & 0.5 < avg_logFC)
+markers.cca.2 <- subset(markers.cca.2, p_val_adj < 0.05 & 0.5 < avg_logFC)
+markers.cca.3 <- subset(markers.cca.3, p_val_adj < 0.05 & 0.5 < avg_logFC)
+markers.cca.4 <- subset(markers.cca.4, p_val_adj < 0.05 & 0.5 < avg_logFC)
+markers.cca.5 <- subset(markers.cca.5, p_val_adj < 0.05 & 0.5 < avg_logFC)
+
+```
+
+Visualization of most variable genes for the identified clusters can be performed by a heatmap. How many genes one wishes to depict can be changed as described below. For the manuscript we decided to depict the 5 genes with the highest logFC genes of each cluster.
+
+```{r, heatmap CCA}
+
+#top 20 genes
+top20de <- se.cca.markers %>% group_by(cluster) %>% top_n(n = 20, wt = avg_logFC)
+#top 10 genes
+top10de <- se.cca.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+#top 5 genes
+top5de <- se.cca.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC)
+
+DoHeatmap(se.cca, features = top5de$gene, size = 4, angle = 45, group.colors = cluster.cols)
+
+```
+
+### Creation of expression programs based on marker gene expression
+
+To create expression programs that are characteristic for the periportal (cluster 1) and pericentral (cluster2) cluster, we calculated Module Scores for all spots in the data. The created expressionprofiles can be visualized on spots under tissue and compared with the spatial distribution of individual genes and the entire cluster. 
+
+```{r, create Module Scores for markers}
+
+#AddModule scores for Central and Portal veins for cca data:
+
+se.cca <- AddModuleScore(se.cca, features = list(rownames(markers.cca.1)), name = "portal_")
+
+se.cca <- AddModuleScore(se.cca, features = list(rownames(markers.cca.2)), name = "central_")
+
+FeatureOverlay(se.cca, features = "portal_1", add.alpha = T, pt.size = 1, sampleids = c(2), cols = brewer.pal(9, "Blues") ,custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F)
+
+
+```
+
+
+## Single cell analysis of publicly available data 
+
+Single cell analysis was performed and visualization was reproduced using similar analysis as for spatial transcriptomics data. The data was subset to only include liver data and subjected to filtering of mitochondrial genes and further normalized subjected to dimensionality reduction and vizualized in non-liner low-dimensional space. 
+
+```{r, load data and metadata for sc-Liver-Data}
+
+#read count matrices 
+scLiver1 <- read.table("~/Box/ST-Analysis-191120/STereoSCope/MCA/Liver1_rm.batch_dge.txt.gz")
+
+#read and subset metadata
+sc.meta <- read.csv("~/Box/ST-Analysis-191120/STereoSCope/MCA/MCA_CellAssignments.csv", row.names = 2)
+sc.meta <- subset(sc.meta, Tissue == "Liver")
+sc.meta$X <- NULL
+
+se.sc.l <- CreateSeuratObject(scLiver1, project = "sc_liver_MCA", meta.data = sc.meta)
+##Somehow not all the cell-ids present in the count-matrix match the metadata - loss of cells after including metadata for liver-samples
+#subset only the data which has also has data in the meta data for Batch Liver_1
+se.sc.l <- SubsetData(se.sc.l, cells = se.sc.l$Batch == "Liver_1")
+
+se.sc.l[["percent.mt"]] <- PercentageFeatureSet(se.sc.l, pattern = "^mt-")
+
+```
+
+```{r, visualize features of the sc data, fig.height=4, fig.width=8}
+
+VlnPlot(se.sc.l, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+```{r, normalize the data, results="hide"}
+
+se.sc.l <- se.sc.l[-grep(pattern = "^mt-", x = rownames(se.sc.l)), ] 
+
+se.sc.l <- SCTransform(se.sc.l)
+
+```
+
+Perform dimensionality reduction using PCA and visualize the variance explained by the PCs
+
+```{r, run PCA and find clusters - compare with cell clusters identified, fig.height=4, fig.width=8}
+
+se.sc.l <- RunPCA(se.sc.l)
+
+print(se.sc.l[["pca"]], dims = 1:5, nfeatures = 5)
+
+DimHeatmap(se.sc.l, dims = 1:15, cells = 500, balanced = TRUE)
+
+ElbowPlot(se.sc.l)
+
+```
+
+Run clustering analysis with default values suggested by the functions
+
+```{r, Find Clusters}
+#First run everything with default values and all of the dimensions of the PCA
+se.sc.l <- FindNeighbors(se.sc.l)
+se.sc.l <- FindClusters(se.sc.l)
+
+head(Idents(se.sc.l), 5)
+```
+
+Perform non-linear dimensionality reduction (UMAP) and vizualize the clusters grouped by the annotations provided by the metadata cell type annoations
+
+```{r, run Umap and vizualize, fig.height= 12, fig.width= 10}
+
+se.sc.l <- RunUMAP(se.sc.l, dims = 1:15, spread = 3, min.dist = 0.5)
+DimPlot(se.sc.l, reduction = "umap", group.by = "Annotation", label = F, pt.size = 0.8, ) + theme(legend.text = element_text(size = 12), legend.position = "bottom")
+
+```
+
+Find markers for all annotations provided by the single cell metadata
+
+```{r, Find markers by annotation, results="hide"}
+
+#set identities to the cell type annotations 
+
+se.sc.l <- SetIdent(se.sc.l, value = "Annotation")
+
+ann.markers <- FindAllMarkers(se.sc.l, logfc.threshold = 0.25, only.pos = T)
+
+#subset for only most significant markers
+
+ann.markers <- subset(ann.markers, ann.markers$p_val_adj < 5e-02)
+
+#split the markers for each individual set: 
+
+bcell.m <- subset(ann.markers, cluster == c("B cell_Jchain high(Liver)", "B cell_Fcmr high(Liver)"))
+dc.m <- subset(ann.markers, cluster == c("Dendritic cell_Cst3 high(Liver)", "Dendritic cell_Siglech high(Liver)"))
+endo.cell.m <- subset(ann.markers, cluster == c("Endothelial cell(Liver)"))
+epi.cell.m <- subset(ann.markers, cluster == c("Epithelia cell_Spp1 high(Liver)", "Epithelial cell(Liver)"))
+ery.blast.m <- subset(ann.markers, cluster == c("Erythroblast_Hbb-bt high(Liver)", "Erythroblast_Hbb-bs high(Liver)"))
+gran.m <- subset(ann.markers, cluster == c("Granulocyte(Liver)"))
+hep.m <- subset(ann.markers, cluster == c("Hepatocyte_Fabp1 high(Liver)", "Hepatocyte_mt-Nd4 high(Liver)"))
+hep.pc.m <- subset(ann.markers, cluster == c("Pericentral (PC) hepatocytes(Liver)"))
+hep.pp.m <- subset(ann.markers, cluster == c("Periportal (PP) hepatocyte(Liver)"))
+kupffer.cell.m <- subset(ann.markers, cluster == c("Kuppfer cell(Liver)"))
+macrophage.m <- subset(ann.markers, cluster == c("Macrophage_Chil3 high(Liver)"))
+neutrophil.m <- subset(ann.markers, cluster == c("Neutrophil_Ngp high(Liver)"))
+stromal.cell.m <- subset(ann.markers, cluster == c("Stromal cell(Liver)"))
+tcell.m <- subset(ann.markers, cluster == c("T cell_Trbc2 high(Liver)","T cell_Gzma high(Liver)"))
+
+l.sc.liver.m <- list(bcell.m, dc.m, endo.cell.m, epi.cell.m, ery.blast.m, gran.m, hep.m, hep.m, hep.pc.m, hep.pp.m, kupffer.cell.m, macrophage.m, neutrophil.m, stromal.cell.m, tcell.m)
+
+```
+
+Create module scores for clusters of spatial data as well as for single cell data 
+
+```{r, module scores for celltypes and visualize them on tissue, fig.width= 10, fig.height= 24}
+
+l.bcell <- list(bcell.m$gene)
+l.tcell<- list(tcell.m$gene)
+l.endocell <- list(endo.cell.m$gene)
+l.epicell <- list(epi.cell.m$gene)
+l.eryblast <- list(ery.blast.m$gene)
+l.granulocyte <- list(gran.m$gene)
+l.hep <- list(hep.m$gene)
+l.hep.pc <- list(hep.pc.m$gene)
+l.hep.pp <- list(hep.pp.m$gene)
+l.kupffer <- list(kupffer.cell.m$gene)
+l.macrophage <- list(macrophage.m$gene)
+l.neutrophil <- list(neutrophil.m$gene)
+l.stromalcell <- list(stromal.cell.m$gene)
+
+
+#AddModuleScores to single cell data   
+se.sc.l <- AddModuleScore(se.sc.l, features = l.bcell, assay = "SCT", name = "b_cell_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.tcell, assay = "SCT", name = "t_cell_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.endocell, assay = "SCT", name = "endo_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.epicell, assay = "SCT", name = "epi_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.eryblast, assay = "SCT", name = "ery_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.granulocyte, assay = "SCT", name = "granu_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.hep, assay = "SCT", name = "hep_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.hep.pc, assay = "SCT", name = "hep_pc_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.hep.pp, assay = "SCT", name = "hep_pp_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.kupffer, assay = "SCT", name = "kupffer_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.macrophage, assay = "SCT", name = "macro_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.neutrophil, assay = "SCT", name = "neutro_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.stromalcell, assay = "SCT", name = "stromal_")
+
+#Add ModuleScores to ST data 
+se.cca <- AddModuleScore(se.cca, features = l.bcell, assay = "SCT", name = "b_cell_")
+se.cca <- AddModuleScore(se.cca, features = l.tcell, assay = "SCT", name = "t_cell_")
+se.cca <- AddModuleScore(se.cca, features = l.endocell, assay = "SCT", name = "endo_")
+se.cca <- AddModuleScore(se.cca, features = l.epicell, assay = "SCT", name = "epi_")
+se.cca <- AddModuleScore(se.cca, features = l.eryblast, assay = "SCT", name = "ery_")
+se.cca <- AddModuleScore(se.cca, features = l.granulocyte, assay = "SCT", name = "granu_")
+se.cca <- AddModuleScore(se.cca, features = l.hep, assay = "SCT", name = "hep_")
+se.cca <- AddModuleScore(se.cca, features = l.hep.pc, assay = "SCT", name = "hep_pc_")
+se.cca <- AddModuleScore(se.cca, features = l.hep.pp, assay = "SCT", name = "hep_pp_")
+se.cca <- AddModuleScore(se.cca, features = l.kupffer, assay = "SCT", name = "kupffer_")
+se.cca <- AddModuleScore(se.cca, features = l.macrophage, assay = "SCT", name = "macro_")
+se.cca <- AddModuleScore(se.cca, features = l.neutrophil, assay = "SCT", name = "neutro_")
+se.cca <- AddModuleScore(se.cca, features = l.stromalcell, assay = "SCT", name = "stromal_")
+
+types.l <- c("b_cell_1","t_cell_1","endo_1", "epi_1", "ery_1","granu_1", "hep_1","hep_pc_1","hep_pp_1","kupffer_1","macro_1", "neutro_1", "stromal_1")
+
+
+#Visualize sc data on sc and st UMAP embedding
+p1 <- DimPlot(se.sc.l, reduction = "umap", group.by = "Annotation", label = T, label.size = 2.5, pt.size = 1.0)+ theme(legend.text = element_text(size = 10))
+p2 <- FeaturePlot(se.sc.l, features = types.l, cols = c("grey", "red3", "red4"))
+p3 <- FeaturePlot(se.cca, features = types.l, cols = c("grey", "red3", "red4"))
+
+
+#Add ModuleScores for spatial transcriptomics clusters 
+
+#l.cca.c0 <- list(rownames(markers.cca.0)) #cluster 0 does not have enough 
+l.cca.c1 <- list(rownames(markers.cca.1))
+l.cca.c2 <- list(rownames(markers.cca.2))
+l.cca.c3 <- list(rownames(markers.cca.3))
+l.cca.c4 <- list(rownames(markers.cca.4))
+l.cca.c5 <- list(rownames(markers.cca.5))
+
+#Add module scores to ST data
+#se.cca <- AddModuleScore(se.cca, features = l.cca.c0 , assay = "SCT", name = "CCA_C0_")
+se.cca <- AddModuleScore(se.cca, features = l.cca.c1 , assay = "SCT", name = "CCA_C1_")
+se.cca <- AddModuleScore(se.cca, features = l.cca.c2 , assay = "SCT", name = "CCA_C2_")
+se.cca <- AddModuleScore(se.cca, features = l.cca.c3 , assay = "SCT", name = "CCA_C3_")
+se.cca <- AddModuleScore(se.cca, features = l.cca.c4 , assay = "SCT", name = "CCA_C4_")
+se.cca <- AddModuleScore(se.cca, features = l.cca.c5 , assay = "SCT", name = "CCA_C5_")
+
+#Add module scores to SC data
+
+#se.sc.l <- AddModuleScore(se.sc.l, features = l.cca.c0 , assay = "SCT", name = "CCA_C0_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.cca.c1  , assay = "SCT", name = "CCA_C1_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.cca.c2 , assay = "SCT", name = "CCA_C2_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.cca.c3 , assay = "SCT", name = "CCA_C3_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.cca.c4 , assay = "SCT", name = "CCA_C4_")
+se.sc.l <- AddModuleScore(se.sc.l, features = l.cca.c5 , assay = "SCT", name = "CCA_C5_")
+
+clusters.l <- c("CCA_C1_1","CCA_C2_1","CCA_C3_1","CCA_C4_1","CCA_C5_1")
+
+p4 <- DimPlot(se.cca, label = T, pt.size = 1, cols = cluster.cols)
+p5 <- FeaturePlot(se.sc.l, features = clusters.l, cols = c("grey", "blue3", "blue4"))
+p6 <- FeaturePlot(se.cca, features = clusters.l, cols = c("grey", "blue3", "blue4"))
+
+
+print(cowplot::plot_grid(p1,NULL,p2,NULL,p3, nrow = 5, ncol = 1, rel_heights = c(4,0.5,3,0.5,3)))
+
+print(cowplot::plot_grid(p4,NULL,p5,NULL,p6, nrow = 5, ncol = 1, rel_heights = c(4,0.5,3,0.5,3)))
+
+```
+
+## Correlation analysis
+
+
+### Spatial autocorrelation
+
+Spatial autocorrelations were performed to investigate correlations of gene expression of individual genes and their distribution in space. This analysis was performed on all genes in the data and is described in detail in the materials and methods section of the manuscript as well as in the documention of the CorSpatialGenes function. 
+
+```{r, Spatial auto-correlation}
+
+##First calculate the spatial correlations and put them in a new data-frame:
+
+stcor <- CorSpatialGenes(se.cca, nNeighbours = 4) 
+#Visualize the matrix in a histogram:
+
+hist(stcor$cor)
+
+#Subset the genes with spatial autocorrelation above 0.2 for each cluster
+
+stcor.c5 <- subset(stcor, stcor$gene %in% rownames(markers.cca.5) & stcor$cor > 0.2)
+stcor.c4 <- subset(stcor, stcor$gene %in% rownames(markers.cca.4) & stcor$cor > 0.2)
+stcor.c3 <- subset(stcor, stcor$gene %in% rownames(markers.cca.3) & stcor$cor > 0.2)
+stcor.c1 <- subset(stcor, stcor$gene %in% rownames(markers.cca.1) & stcor$cor > 0.2)
+stcor.c2 <- subset(stcor, stcor$gene %in% rownames(markers.cca.2) & stcor$cor > 0.2)
+
+#add names referring to the cluster-id as a column to the dataframe
+stcor.c1$cluster.id <- rep("cluster1", nrow(stcor.c1))
+stcor.c2$cluster.id <- rep("cluster2", nrow(stcor.c2))
+stcor.c3$cluster.id <- rep("cluster3", nrow(stcor.c3))
+stcor.c4$cluster.id <- rep("cluster4", nrow(stcor.c4))
+stcor.c5$cluster.id <- rep("cluster5", nrow(stcor.c5))
+
+stcor <- dplyr::bind_rows(stcor.c1, stcor.c2, stcor.c3, stcor.c4, stcor.c5)
+stcor.table <- stcor
+
+#visualize correlation values in a barplot and color the cluster-id
+
+ggplot(stcor, aes(reorder(gene, cor),cor, fill = cluster.id)) +
+  coord_flip()+
+  geom_bar(stat = "identity") + 
+  scale_fill_manual(values = c("blue3","red3", "turquoise3","green4")) +
+  labs(fill = "cluster identity") + 
+  xlab("gene") + 
+  ylab("spatial autocorrelation")+ 
+  theme_light()
+
+```
+
+### Correlation of between all genes of all clusters
+
+Correlation of marker genes of all clusters as well as of genes between pericentral and periportal markers, to investigate how expression between these markers correlates. This analysis aims to highlight the relationships between marker gene expression across spots. 
+
+```{r, correlation matrices of cluster markers}
+
+##CPearsin correlations between central and portal markers only
+
+cv.pv.cca.cor <- cor(t(as.matrix(se.cca@assays$SCT@data[c(rownames(markers.cca.1), rownames(markers.cca.2)), ])))
+
+corrplot(cv.pv.cca.cor , method="color", tl.col = "black", order = "FPC", col=colorRampPalette(c("blue4","white","red3"))(200), cl.lim = c(-1,1))
+
+#FPC order puts the correlations in order of the first Principal component, hence the components explaining the majority of the variance are on opposite ends of the plot 
+
+##Pearson correlation of all clusters 
+cca.cor <- cor(t(as.matrix(se.cca@assays$SCT@data[c(rownames(markers.cca.1), rownames(markers.cca.2), rownames(markers.cca.3), rownames(markers.cca.4), rownames(markers.cca.5)), ])))
+
+print(corrplot(cca.cor , method="color", tl.col = "black", order = "FPC", col=colorRampPalette(c("blue4","white","red3"))(100), cl.lim = c(-1,1)))
+
+
+```
+
+
+### Correlation of pericentral and periportal single cell and spatial transcriptomics data 
+
+While we can visualize the expression programs of genes belonging to the periportal and pericentral hepatocytes of the single cell data on the spatial coordinates using module scores and compare it to the spatial distribution of expression programs of periportal and pericentral clusters of our data, we would like to explore the relationship between the datasets. To do so we can calculate the spearman-coefficients between the expression programs of all groups of interest within the spot-coordinate or the single cells respectively. 
+
+First we look at the correlations between expression programs within the spatial data.
+
+```{r, module correlations on ST data}
+
+coordinates <- colnames(se.cca)
+cca1.scores <- se.cca@meta.data$CCA_C1_1
+hep.pp.scores <- se.cca@meta.data$hep_pp_1
+cca2.scores <- se.cca@meta.data$CCA_C2_1
+hep.pc.scores <- se.cca@meta.data$hep_pc_1
+
+mat <- data.frame(coordinates, cca1.scores, cca2.scores, hep.pp.scores, hep.pc.scores)
+mat1 <- as.matrix(mat[,2:5])
+
+score.cor <- cor(mat1, method = "spearman")
+
+
+corrplot(score.cor, method = "color", order = "original", col = brewer.pal(11, "BrBG"),tl.col = "black", tl.srt = 45, tl.cex = 1, sig.level = 0.005)
+
+
+```
+
+Then we calculate the same correlations between expression programs of clusters and cell types using the single cell count data.
+
+```{r, module correlations on SC data}
+
+barcodes <-colnames(se.sc.l)
+cca1.scores <- se.sc.l@meta.data$CCA_C1_1
+hep.pp.scores <- se.sc.l@meta.data$hep_pp_1
+cca2.scores <- se.sc.l@meta.data$CCA_C2_1
+hep.pc.scores <- se.sc.l@meta.data$hep_pc_1
+
+mat <- data.frame(barcodes, cca1.scores,cca2.scores, hep.pp.scores,hep.pc.scores)
+mat1 <- as.matrix(mat[,2:5])
+
+sc.score.cor <- cor(mat1, method = "spearman")
+
+corrplot(sc.score.cor, method = "color", order = "original",col = brewer.pal(11, "BrBG"), tl.col = "black", tl.srt = 45, tl.cex = 1, sig.level = 0.005)
+
+```
+
+
+## Pathway analysis
+
+Functional enrichment was performed for biological processes using the gprofiler2 package in R. THe function gost performs gene enrichment analysis using several databases as a reference, detecting statistically significantly enriched terms. Here we can perform enrichment analysis for *mus musculus* and correct for significance with the default parameters of gprofiler package as described in more detail in the materials and methods of the manuscript. We can continue visualizing the enrichment using ggplot, where enrichment scores are represented as the negative log10 algorithm of the adjusted p-value.
+
+
+```{r, go term analysis on CCA-object, fig.width= 8, fig.height= 2}
+ 
+#add a new column with gene symbols to the marker list for easier access to the data
+
+markers.cca.1$gene <- rownames(markers.cca.1)
+markers.cca.2$gene <- rownames(markers.cca.2)
+markers.cca.3$gene <- rownames(markers.cca.3)
+markers.cca.4$gene <- rownames(markers.cca.4)
+markers.cca.5$gene <- rownames(markers.cca.5)
+
+liver.l <- list(markers.cca.1, markers.cca.2,markers.cca.3,markers.cca.4, markers.cca.5)
+  
+##Run GO analysis
+gostres.liver <- setNames(lapply(liver.l, function(x){
+  gost(query = x$gene, organism = "mmusculus")
+}), nm = c("gostres.C1", "gostres.C2", "gostres.C3", "gostres.C4", "gostres.C5"))
+
+#subset for GO:BP only
+go.BP.liver.l <- setNames(lapply(liver.l, function(x){
+  gost(query = x$gene, organism = "mmusculus", sources = "GO:BP")
+}), nm = c("gostres.BP.C1", "gostres.BP.C2", "gostres.BP.C3", "gostres.BP.C4", "gostres.BP.C5"))
+
+##Visualize the results
+
+#termname and GO.term vector
+termname <- go.BP.liver.l$gostres.BP.C5$result$term_name[1:10]
+termname <- str_replace(termname, "antigen processing and presentation of exogenous peptide antigen via MHC class II", "antigen processing and presentation (I)")
+termname <- str_replace(termname, "antigen processing and presentation of peptide or polysaccharide antigen via MHC class II", "antigen processing and presentation (II)")
+termid <- go.BP.liver.l$gostres.BP.C5$result$term_id
+#concatenate 
+scale_new <- paste(termname, termid, sep = "::")
+
+go.BP.liver.l$gostres.BP.C5$result$term_id_new <- scale_new
+
+ggplot(head(go.BP.liver.l$gostres.BP.C5$result,5), aes(reorder(term_id_new, -log10(p_value)), -log10(p_value), fill = -log10(p_value))) + geom_bar(stat = "identity", color = "black") +
+  coord_flip() +
+  scale_fill_gradientn(name = "Enrichment Score",colours =   RColorBrewer::brewer.pal(n = 9, name = "Greens")) + 
+  scale_y_continuous() +
+  xlab("Biological Process")+
+  ylab("Enrichment Score") +
+  theme(axis.text.y = element_text(size = 10), axis.text.x = element_text(size = 10), panel.background = element_blank(), axis.title = element_text(size = 12), legend.text = element_text(size = 8), legend.title = element_text(size = 10))
+
+
+
+```
+
+
+For visualization of the go-terms on the tissue coordinates, we can create gene expression prgrams for all genes present in our st data beloning to a gene ontology term of interest. To reference which genes are included in each go term of interest, we can download the whole gene lists for each go term of interest from the [Mouse Genome Informatics database](http://www.informatics.jax.org/vocab/gene_ontology/). Here we want to create modules for the GO-terms for "collagen and fibril organization (GO:0030199)" and "response to cytokine (GO:0034097)" and plot them on the tissue. 
+
+
+
+```{r, visusalize GO-terms on tissue}
+
+col.term <- data.table::fread("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/pathway_analysis/GO_term_summary_GO_0030199.csv", sep = ";")
+cyto.term <- data.table::fread("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/pathway_analysis/GO_term_summary_GO_0034097.csv", sep = ";")
+#subset only data of interest
+
+gene <- col.term$Symbol
+term <- col.term$`Annotated Term`
+col.term <- data.frame(gene,term)
+
+gene <- cyto.term$Symbol
+term <- cyto.term$`Annotated Term`
+cyto.term <- data.frame(gene,term)
+
+col.term.l <- list(col.term$gene)
+cyto.term.l <- list(cyto.term$gene)
+
+#get vector with all genes present in cluster 5 and adh.term/mus.term (bio.adl)
+
+
+#collagen fibril organization 
+m <- match(rownames(markers.cca.5), col.term$gene)
+col.term.genes <- col.term$gene[na.omit(m)]
+col.term.genes
+
+#cytokines 
+m <- match(rownames(markers.cca.5), cyto.term$gene)
+cyto.term.genes <- cyto.term$gene[na.omit(m)]
+cyto.term.genes
+
+#add module scores 
+
+se.cca <- AddModuleScore(se.cca, features = col.term.l, name = "collagen_fibrin_org_")
+se.cca <- AddModuleScore(se.cca, features = cyto.term.l, name = "resp_cytokine_")
+
+#Visualize feature of interest on the tissue 
+FeatureOverlay(se.cca, features = "collagen_fibrin_org_1",add.alpha = T, pt.size = 1.5, sampleids = 2, cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F)
+
+```
+
+## Comparison of publiclicly available data from "Single-cell spatial reconstruction revelas global division of labour in the mammalian liver" [https://www.nature.com/articles/nature21065#Sec13]
+
+The team around Shalev Itzkovitz generated a detailed single cell reconstruction approach to answer questions about liver zonation in the mammalian liver in 2017, since our data investigates liver zonation we soght to compare zonation gradients of our data with data from this study. Therefore we used publicly available expression data of this, describing expression of genes along 9 reconstructed layers and plotted genes identified as zonation markers in our data along these layers. 
+
+First import and format the zonation matrix and subset the matrix to contain only genes for either a) portal vein markers or b) central vein markers identified in our study
+
+#### a) portal vein markers 
+
+```{r, expression comparison of marker genes of cluster 1 and layer expression}
+
+#read "zonation matrix" 
+
+zone.mat <- read.xlsx("~/Box/ST-Analysis-191120/STereoSCope/LiverScData/Halpern_et_al_2017/41586_2017_BFnature21065_MOESM62_ESM.xlsx",sheetIndex = 1, header = TRUE)
+
+#Extract rows with same gene-symbols as marker genes of ST-cluster and format the data
+zone.mat.c1 <- subset(zone.mat, zone.mat$Gene.Symbol %in% rownames(markers.cca.1))
+zone.mat.c1.1 <- zone.mat.c1[1:10]
+zone.mat.c1.2 <- zone.mat.c1[11:19]
+p.q <- zone.mat.c1[20:21]
+zone.mat.c1.1$gene <- zone.mat.c1$Gene.Symbol
+zone.mat.c1.2$Gene.Symbol <- zone.mat.c1$Gene.Symbol
+zone.mat.c1.2 <- tidyr::gather(zone.mat.c1.2, "Gene.Symbol", "s.e.m", 1:9)
+zone.mat.c1.1 <- tidyr::gather(zone.mat.c1.1, "Gene.Symbol", "expression", 2:10)
+zone.mat.c1.2$Gene.Symbol <- NULL
+names(zone.mat.c1.1)[2] <- "layer"
+zone.mat.c1.n <- bind_cols(zone.mat.c1.1, zone.mat.c1.2)
+zone.mat.c1.l <- split(zone.mat.c1.n, zone.mat.c1.n$gene)
+
+
+```
+
+To faciliate vizualization of all genes of interest in a single graph, values were scaled so that maximal and minimal values ranged from values between 0 and 1
+
+```{r, scaling cluster 1}
+#Normalization for max values 
+layers <- c("Layer.1", "Layer.2", "Layer.3", "Layer.4", "Layer.5", "Layer.6", "Layer.7", "Layer.8", "Layer.9")
+##Get the max-value/layer and divide all the values by the max-value (store in a new column)
+max.c1.l <- as.data.frame(sapply(zone.mat.c1.n$gene, function(x){
+  max <- max(zone.mat.c1.n[zone.mat.c1.n$gene == x,]$expression)
+  norm.exp <- zone.mat.c1.n[zone.mat.c1.n$gene == x,]$expression/max
+}), row.names = layers)
+
+max.c1.l <- max.c1.l[1:8]
+max.c1.l <- as.data.frame(t(max.c1.l))
+max.c1.l$gene <- rownames(max.c1.l)
+max.c1.l <- tidyr::gather(max.c1.l, "gene", "norm_expression")
+
+#store in new column in original data frame 
+zone.mat.c1.n <- bind_cols(zone.mat.c1.n, max.c1.l$norm_expression)
+names(zone.mat.c1.n)[5] <- "norm_expression"
+
+#Plot all genes in one plot
+
+ggplot(zone.mat.c1.n, aes(x = layer, y = norm_expression, color = gene, group = gene)) +
+  geom_smooth(se = F) + 
+  labs(y= "expression (normalized to max. value)", x = "layer", title = "expression of ST portal vein markers across reconstructed layers")+
+  theme_classic()
+
+```
+
+```{r, plot genes of cluster 1 individually, fig.width=12, fig.height=16}
+zone.c1.plot.l <- lapply(zone.mat.c1.l, FUN = function(x) {
+p <- ggplot(x,aes(x = layer, y = expression, color = gene, group = gene ))+
+  geom_smooth() + 
+  labs(y= "expression value", x = "layer")+
+  theme_classic()+
+  scale_color_manual(values = "blue3")
+return(p)
+})
+
+cowplot::plot_grid(plotlist = zone.c1.plot.l, ncol = 2)
+
+```
+
+#### b) central vein markers 
+
+```{r, comparison of zonation layers and cluster 2 markers}
+
+zone.mat.c2 <- subset(zone.mat, zone.mat$Gene.Symbol %in% rownames(markers.cca.2))
+zone.mat.c2.1 <- zone.mat.c2[1:10]
+zone.mat.c2.2 <- zone.mat.c2[11:19]
+p.q <- zone.mat.c2[20:21]
+zone.mat.c2.1$gene <- zone.mat.c2$Gene.Symbol
+zone.mat.c2.2$Gene.Symbol <- zone.mat.c2$Gene.Symbol
+zone.mat.c2.2 <- tidyr::gather(zone.mat.c2.2, "Gene.Symbol", "s.e.m", 1:9)
+zone.mat.c2.1 <- tidyr::gather(zone.mat.c2.1, "Gene.Symbol", "expression", 2:10)
+zone.mat.c2.2$Gene.Symbol <- NULL
+names(zone.mat.c2.1)[2] <- "layer"
+zone.mat.c2.n <- bind_cols(zone.mat.c2.1, zone.mat.c2.2)
+zone.mat.c2.l <- split(zone.mat.c2.n, zone.mat.c2.n$gene)
+
+
+```
+
+```{r, scaling cluster 2}
+
+#Normalized values
+max.c2.l <- as.data.frame(sapply(zone.mat.c2.n$gene, function(x){
+  max <- max(zone.mat.c2.n[zone.mat.c2.n$gene == x,]$expression)
+  norm.exp <- zone.mat.c2.n[zone.mat.c2.n$gene == x,]$expression/max
+}), row.names = layers)
+
+max.c2.l <- max.c2.l[1:14]
+max.c2.l <- as.data.frame(t(max.c2.l))
+max.c2.l$gene <- rownames(max.c2.l)
+max.c2.l <- tidyr::gather(max.c2.l, "gene", "norm_expression")
+#store in new column in oroginal data frame 
+
+zone.mat.c2.n <- bind_cols(zone.mat.c2.n, max.c2.l$norm_expression)
+names(zone.mat.c2.n)[5] <- "norm_expression"
+#Plot all genes in one plot
+
+c1.p <- ggplot(zone.mat.c2.n, aes(x = layer, y = norm_expression, color = gene, group = gene)) + 
+  geom_smooth(se = F) + 
+  theme_classic() +
+  labs(y= "expression (normalized to max. value)", x = "layer")
+
+
+```
+
+```{r, plot genes of cluster 2 individually, fig.height= 24, fig.width=12}
+zone.c2.plot.l <- lapply(zone.mat.c2.l, FUN = function(x) {
+p <- ggplot(x,aes(x = layer, y = expression, color = gene , group = gene ))  + 
+  geom_smooth() +
+  theme_classic() +
+  scale_color_manual(values = "red3")+
+  labs(y= "expression (normalized to max. value)", x = "layer")
+return(p)
+})
+
+cowplot::plot_grid(plotlist = zone.c2.plot.l, ncol = 2)
+```
+
+## Visualization of Stereoscope proportion values on spots
+
+The annotated single cell data from the Mouse Cell Atlas (MCA) in this study was integrated with our spatial data using *Stereoscope* (https://www.nature.com/articles/s42003-020-01247-y). Only cell originated from liver tissue were considered (similar as above). To extract a set of highly variable genes (5000 genes) Seurat (v.3.2.2) was used, as described in the materials and methods section of the manuscript. The cell type proportion value output of the analysis can be visualized using STUtility, similar to visualization of read counts in the prvious part of this Rmarkdown script. 
+
+```{r, create objects, results="hide"}
+
+#Use an infotable as input
+infoTable <- read.table("/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/res/stereoscope-res/2020-10-14-iter-001/infotable-stereoscope.csv", sep=";", header=T, stringsAsFactors = F)[c(1, 2, 3, 4, 5,6,7,8), ]
+#Add smaple IDs to infotable: Becomes important for later normalizations
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+#Load in without any filters or restrictions
+stsc <- InputFromTable(infotable = infoTable, #Run in console 
+                   platform = "2k", # set the platform
+                   transpose = T)
+#to prevent confusion we will rename the column "nFeature_RNA" to "n_celltypes" and the column "nCount_RNA" to "sum_pp"
+
+names(stsc@meta.data)[2] <- "sum_pp"
+names(stsc@meta.data)[3] <- "n_celltypes"
+head(stsc[[]])
+
+ST.FeaturePlot(stsc, features = "n_celltypes")
+
+```
+
+```{r, Load images in proportion value object, results="hide"}
+
+stsc <- LoadImages(stsc)
+
+#ImagePlot(stsc)
+
+stsc <- MaskImages(stsc)
+
+#stsc<- ManualAlignImages(stsc)
+
+#adjust the resolution for overlaying proportion-values on tissue 
+#stsc <- SwitchResolution(stsc, xdim = 2e3)
+
+```
+
+For a better visual representation of the distribution of the majority of proportion values for each cell type across the tissue, the values were scaled using quantile scaling. For each section and cell type the 95th percentile of the data was considered. The values were re-scaled to the maximum value for each cell type, resulting in values between 0 and 1 within the same function. 
+
+```{r, quantile scaling function}
+
+scaler <- function(x, q = 0.99) {x[x > quantile(x, q)] <- max(x); scales::rescale(x)}
+
+```
+
+```{r, scale each sample}
+
+#Subset objects according to section
+se1 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_1"))))
+se2 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_2"))))
+se3 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_3"))))
+se4 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_4"))))
+se5 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_5"))))
+se6 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_6"))))
+se7 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_7"))))
+se8 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_8"))))
+
+
+se.l <- c(se1, se2,se3, se4, se5, se6, se7, se8)
+
+mat.l <- lapply(se.l, function(x){
+  as.data.frame(t(x@assays$RNA@data))
+})
+
+#To correct for outliers in both directions (low and high values) the 95th percentile of the data was considered and adjusted accordingly in the function for scaling of individual sections.
+
+#CN73-C1
+scale2 <- sapply(mat.l[[1]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[1]])
+
+se1[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se1) <- "scaled2"
+
+#CN73-D1
+scale2 <- sapply(mat.l[[2]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[2]])
+
+se2[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se2) <- "scaled2"
+
+#CN73-E2
+
+scale2 <- sapply(mat.l[[3]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[3]])
+
+se3[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se3) <- "scaled2"
+
+#CN16-D2
+
+scale2 <- sapply(mat.l[[4]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[4]])
+
+se4[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se4) <- "scaled2"
+
+#CN16-E2 
+
+scale2 <- sapply(mat.l[[5]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[5]])
+
+se5[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se5) <- "scaled2"
+
+#CN65-D1
+
+scale2 <- sapply(mat.l[[6]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[6]])
+
+se6[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se6) <- "scaled2"
+
+#CN65-D2
+
+scale2 <- sapply(mat.l[[7]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[7]])
+
+se7[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se7) <- "scaled2"
+
+#CN65-E2
+
+scale2 <- sapply(mat.l[[8]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[8]])
+
+se8[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se8) <- "scaled2"
+
+```
+
+After each section was scaled individually the new objects with adjusted default assays for analysis can be combined again and plotted on the spot coordinates or the brightfield tissue images loaded previously if desired. 
+
+```{r, combine scaled objects}
+
+se.l <- list(se2, se3, se4, se5, se6, se7, se8)
+
+se.pp <- MergeSTData(se1, se.l)
+
+ST.FeaturePlot(se.pp, features = "n_celltypes")
+
+all <- rownames(stsc@assays$RNA)
+immuno <- c("Kuppfer cell(Liver)","Macrophage-Chil3 high(Liver)", "Dendritic cell-Cst3 high(Liver)" , "Dendritic cell-Siglech high(Liver)","B cell-Fcmr high(Liver)" , "B cell-Jchain high(Liver)",  "T cell-Gzma high(Liver)" , "T cell-Trbc2 high(Liver)","Neutrophil-Ngp high(Liver)", "Granulocyte(Liver)")
+hep <- c("Hepatocyte-Fabp1 high(Liver)", "Hepatocyte-mt-Nd4 high(Liver)","Pericentral (PC) hepatocytes(Liver)", "Periportal (PP) hepatocyte(Liver)")
+hep.zon <- c("Pericentral (PC) hepatocytes(Liver)", "Periportal (PP) hepatocyte(Liver)")
+lec <- c("Endothelial cell(Liver)", "Epithelial cell(Liver)","Stromal cell(Liver)")
+ery <- c("Erythroblast-Hbb-bs high(Liver)", "Erythroblast-Hbb-bt high(Liver)")
+
+ST.FeaturePlot(se.pp, features = all , indices = 1, palette = "plasma")
+
+
+#Visualize proportions of a cell type list
+ST.FeaturePlot(se.pp, features = hep, ncols.features = 4, pt.size = 1.5, pt.alpha = 1, cols = scico(8,palette = "buda"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F)
+
+#Visualize proportions of only one cell type
+
+
+ST.FeaturePlot(se.pp, features = "Pericentral (PC) hepatocytes(Liver)" ,indices = 2, pt.size = 1.2, pt.alpha = 0.8, cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F)
+dev.off()
+
+```
+
+```{r, save the objects for easy acess to the data for further analysis, include = FALSE}
+
+saveRDS(se.cca, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/seurat-object")
+
+```
+
+
+```{r, export main figures, echo = FALSE, include= FALSE, eval = FALSE}
+
+tiff("~/Box/Ankarklev-Liver/Figures/Figure4/FeaturePlot-CCA-clusters.tiff", units = "cm" , width = 16, height = 12, res = 1200)
+ST.FeaturePlot(se.cca, features = "seurat_clusters", split.labels = F, cols = cluster.cols,indices = 2,pt.size = 0.8, custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right"))
+dev.off()
+
+#split labels and extract only cluster 5
+
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig4/clusters-split.tiff", res = 600, units= "cm", width = 10, height = 60)
+ST.FeaturePlot(se.cca, features = "seurat_clusters", split.labels = T, indices = 2,pt.size = 1.5,ncol = 1, cols = cluster.cols, custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right"))
+dev.off()
+
+
+#all clusters
+png(filename = "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig1/Liver-CCA-UMAP.png", width = 4200, height = 3000, res = 300) #Units are pixels by default
+print(DimPlot(se.cca, pt.size = 1.2, cols = cluster.cols) +
+        theme(axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()))
+dev.off()
+
+#only cluster 2 and 3 on HE image
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig2/CCA-c1-c2-overlay.tiff", width = 10, height = 10, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca[[]], seurat_clusters == c(1,2))),sampleids = 2, pt.alpha = 0.8, pt.size = 1.3, cols = c("blue3", "red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F))
+dev.off()
+
+#only cluster 5 on HE image
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig4/Overlay_cluster5.tiff", width = 12, height = 10, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca[[]], seurat_clusters == c(5))),sampleids = 2, pt.alpha = 0.8, pt.size = 1.3, cols = c("green4"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F))
+dev.off()
+
+#Plotting features on the UMAP
+
+#Glul
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig2/Glul-ST-Featureplot.png", width = 12, height = 12, unit = "cm", res= 600)
+print(ST.FeaturePlot(se.cca, features = "Glul", indices = 2, pt.size = 1.8, cols = c("lightgrey", "rosybrown1","red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm"))))
+dev.off()
+
+#UMAP
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig2/Glul-Featureplot.png", width = 4200, height = 3000, res = 300)
+print(FeaturePlot(se.cca, features = "Glul", pt.size = 3, cols = c("lightgrey", "rosybrown1","red3")) + 
+              theme(axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()))
+dev.off()
+
+#Sds
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig2/Sds-ST-Featureplot.png", width = 12, height = 12, unit = "cm", res= 600)
+print(ST.FeaturePlot(se.cca, features = "Sds", indices = 2, pt.size = 1.8, cols = c("lightgrey", "skyblue3", "royalblue4"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm"))))
+dev.off()
+
+#UMAP
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/Fig2/Sds-Featureplot.png", width = 4200, height = 3000, res = 300)
+print(FeaturePlot(se.cca, features = "Sds", pt.size = 3, cols = c("lightgrey", "skyblue3", "royalblue4")) + 
+              theme(axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()))
+dev.off()
+
+```
+
+```{r, export supplementary figures, echo = FALSE, include= FALSE, eval = FALSE}
+
+##Overlay clusters on all sections
+
+#Change the sections of interest accordingly
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s1/cluster_spots_CN16.png",width = 14, height = 7, units = "cm", res = 1200)
+print(ST.FeaturePlot(se.cca, features = "seurat_clusters",pt.size = 1.2, indices = c(4:5),ncol = 2,cols = cluster.cols,custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm"), strip.text = element_blank())))
+dev.off()
+
+##Pearson correlation for all samples
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/pearson_all_clusters.png", res = 300, width = 30, height = 30, units = "cm")
+print(corrplot(cca.cor , method="color", tl.col = "black", order = "FPC", col=colorRampPalette(c("blue4","white","red3"))(100), cl.lim = c(-1,1)))
+dev.off()
+
+##Spatial autocorrelation
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s6/spatial_autocorrelation_clusters.png", width = 20, height = 12 , res= 600, units = "cm")
+ggplot(stcor, aes(reorder(gene, cor),cor, fill = cluster.id)) +
+  coord_flip()+
+  geom_bar(stat = "identity") + 
+  scale_fill_manual(values = c("blue3","red3", "turquoise3","green4")) +
+  labs(fill = "cluster identity") + 
+  xlab("gene") + 
+  ylab("spatial autocorrelation")+ 
+  theme_light()
+dev.off()
+
+##Spearmans correlations between data-sets
+#ST counts
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s3/ST-spearman.cor.scores.png", width = 20, height = 15 , res= 600, units = "cm")
+print(corrplot(score.cor, method = "color", order = "original", col = brewer.pal(11, "BrBG"),tl.col = "black", tl.srt = 45, tl.cex = 1, sig.level = 0.005))
+dev.off()
+#single cell count
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s4/MCA-spearman.cor.scores.png", width = 20, height = 15 , res= 600, units = "cm")
+corrplot(sc.score.cor, method = "color", order = "original",col = brewer.pal(11, "BrBG"), tl.col = "black", tl.srt = 45, tl.cex = 1, sig.level = 0.005)
+dev.off()
+
+##Overlay of selected genes and ModuleScores for central and portal veins
+
+#central vein scores
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/central_vein_m/ModuleScore_Overlay_CN16.tiff", width = 14, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "central_1", add.alpha = T, pt.size = 1, sampleids = c(4:5), ncols.samples = 2,cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F))
+dev.off()
+
+#Glul
+
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/central_vein_m/Glul_Overlay_CN16.tiff", width = 14, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Glul", add.alpha = T, pt.size = 1, sampleids = c(4:5), ncols.samples = 2,cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F))
+dev.off()
+
+#Cyp2e1
+
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/central_vein_m/Cyp2e1_Overlay_CN73.tiff", width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Cyp2e1", add.alpha = T, pt.size = 1, sampleids = c(1:3), ncols.samples = 3,cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F))
+dev.off()
+
+
+#portal vein scores
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/portal_vein_m/ModuleScore_p_Overlay_CN16.tiff", width = 14, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "portal_1", add.alpha = T, pt.size = 1,ncols.samples = 2, sampleids = c(4:5), cols = brewer.pal(9, "Blues") ,custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F))
+dev.off()
+
+#Sds
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/portal_vein_m/Sds_Overlay_CN73.tiff", width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Sds", add.alpha = T, pt.size = 1,ncols.samples = 3, sampleids = c(1:3), cols = brewer.pal(9, "Blues") ,custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F))
+dev.off()
+
+
+#Cyp2f2
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s5/portal_vein_m/Cyp2f2_Overlay_CN73.tiff", width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Cyp2f2", add.alpha = T, pt.size = 1,ncols.samples = 3, sampleids = c(1:3), cols = brewer.pal(9, "Blues") ,custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F))
+dev.off()
+
+
+##Expression by distance itzkovitz-comparison
+
+#portal 
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s7/ST-portal_-Itzkowitz-layers-exp.png", width = 20, height = 15, res = 300, units = "cm")
+ggplot(zone.mat.c1.n, aes(x = layer, y = norm_expression, color = gene, group = gene)) + 
+  geom_smooth(se = F) + 
+  theme_classic() +
+  labs(y= "expression (normalized to max. value)", x = "layer")
+dev.off()
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s7/ST-portal_Itzkovitz-norm-layers-genewise.png", width = 30, height = 30, res = 300, units = "cm")
+cowplot::plot_grid(plotlist = zone.c1.plot.l, ncol = 2)
+dev.off()
+
+#central
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s7/ST-central_-Itzkowitz-layers-exp.png", width = 20, height = 15, res = 300, units = "cm")
+ggplot(zone.mat.c2.n, aes(x = layer, y = norm_expression, color = gene, group = gene)) + 
+  geom_smooth(se = F) + 
+  theme_classic() +
+  labs(y= "expression (normalized to max. value)", x = "layer")
+dev.off()
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s7/ST-central_Itzkovitz-norm-layers-genewise.png", width = 30, height = 50, res = 300, units = "cm")
+cowplot::plot_grid(plotlist = zone.c2.plot.l, ncol = 2)
+dev.off()
+
+
+##Overlay of cluster 5 on the data 
+
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s9/Overlay_Cluster5_CN73.tiff", width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "seurat_clusters", ncols.samples = 3, spots = rownames(subset(se.cca[[]], seurat_clusters == c(5))),sampleids = c(1:3), pt.alpha = 0.8, pt.size = 1.3, cols = c("green4"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F))
+dev.off()
+
+##Overlay of cluster 5 selected genes and gene ontology scores
+
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s10/Col3a1_Overlay_CN65.tiff",width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Col3a1", add.alpha = T, pt.size = 1.3, sampleids = c(6:8) ,ncols.samples = 3, cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F))
+dev.off()
+
+#Vim
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s10/Vim_Overlay_CN65.tiff",width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Vim", add.alpha = T, pt.size = 1.3, sampleids = c(6:8) ,ncols.samples = 3, cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F))
+dev.off()
+
+#Col1a2
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s10/Col1a2_Overlay_CN65.tiff",width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Col1a2", add.alpha = T, pt.size = 1.3,sampleids = c(6:8) ,ncols.samples = 3, cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F))
+dev.off()
+
+#Gsn
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s10/Gsn_Overlay_CN65.tiff",width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "Gsn", add.alpha = T, pt.size = 1.3, sampleids = c(6:8) ,ncols.samples = 3,cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F))
+dev.off()
+
+#ModuleScore collagen firbil organization
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s11/collagen_fibril_organization_overlay_CN65.tiff",width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "collagen_fibrin_org_1", add.alpha = T, pt.size = 1.3, sampleids = c(6:8) ,ncols.samples = 3, cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F))
+dev.off()
+
+#ModuleScore response to cytokine
+
+tiff("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/Figures/supplement/s11/cytokine_reaction_overlay_CN65.tiff",width = 21, height = 7, units = "cm", res = 1200)
+print(FeatureOverlay(se.cca, features = "resp_cytokine_1", add.alpha = T, pt.size = 1.3, sampleids = (6:8) , ncols.samples = 3, cols = c("darkorange4","darkorange", "yellow1"),custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F))
+dev.off()
+
+```
+
+

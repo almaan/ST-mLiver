@@ -1,25 +1,24 @@
 # ST Liver 
 
-This repository contains data to produce data presented in "Title", these include data, scripts ..
-
+This repository provides data and code to reproduce data presented in "Spatial Transcriptomics to define transcriptional patterns of zonation and structural components in the liver", and show-cases the applicability and potential to study tissue transcriptomics computationally. In this study, Spatial Transcriptomics was performed on liver tissue sections of female wildtype mice of 8-12 weeks of age. All scripts presented here are designed to be used with any kind of spatial transcriptomics data and provide detailed documentation for the reproduction of the data presented in this original study. Original data and large files are placed at an external site save resources inlcuding count matrices, spot files, HE-images, masks, h5ad-files, etc. and can be accessed at [insert link to zenodo repo]. 
 
 ## Structure
 
 * `data` - contains processed data to be used in the analysis (files must be downloaded from an external resource, see below)
-	* `gene lists`- 
-	* `h5ad-cca`- 
+	* `gene lists`
+    * `marker genes` - contains csv files with central and portal markers of the ST data and the SC data analyis performed for the liver data of the [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8)
+    * `stereoscope` - contains lists of 5000 most variable genes of single cell [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8) data and [Halpern et al](https://www.nature.com/articles/nature21065) study for sterescope analysis
+    * `veins` - contains shortlists of marker genes for portal and central veins for expression by distance analysis
 	* `meta`- 
 	* `stereoscope`- 
 * `scripts` - contains processing scripts and notebooks
-	* `R-markdown-methods.Rmd` - contains a R markdown script to perform canonical correlation analyis, clustering and DGEA, tissue visualization, correlation analysis, visualization of single cell integration using single cell data of the [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8) and comparative analyses with published data from [Halpern et al](https://www.nature.com/articles/nature21065)
-	* `MultiCCA.R` - contains code for the modified canonical correlation analysis function used in `R-markdown-methods.Rmd`
-    * `cluster-interaction-analysis.ipynb` - notebook outlining the cluster interaction analysis (used to produce Supplementary Image X)
+	* `Liver-ST.Rmd` - contains a R markdown script to perform canonical correlation analyis, clustering and DGEA, tissue visualization, correlation analysis, visualization of single cell integration using single cell data of the [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8) and comparative analyses with published data from [Halpern et al](https://www.nature.com/articles/nature21065)
+	* `MultiCCA.R` - contains code for the modified canonical correlation analysis function used in `Liver-ST.Rmd`
+    * `cluster-interaction-analysis.ipynb` - notebook outlining the cluster interaction analysis (used to produce Supplementary Image 2)
     * `make-gene-list.R` - script to generate list of highly variable genes (hvgs) to use in `stereoscope` mapping.
     * `prepare-data.py` - program with CLI to generate `h5ad` files for spatial analysis (in `vein-analysis.ipynb`). See
     * `vein-analysis.ipynb` - notebook outlining the feature by distance analysis and vein type classification/prediction based on NEPs.
-
-* `res` - holds results generated from the analysis
-* `rsc` - are resources of interest
+    
 * `hepaquery` - files constituting the `hepaquery` package
 * `setup.py` - installation file for `hepaquery` module
 

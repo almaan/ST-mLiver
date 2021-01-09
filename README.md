@@ -1,8 +1,31 @@
-# ST Liver 
+# ST-mLiver 
 
-This repository provides data and code to reproduce data presented in "Spatial Transcriptomics to define transcriptional patterns of zonation and structural components in the liver", and show-cases the applicability and potential to study tissue transcriptomics computationally. In this study, Spatial Transcriptomics was performed on liver tissue sections of female wildtype mice of 8-12 weeks of age. All scripts presented here are designed to be used with any kind of spatial transcriptomics data and provide detailed documentation for the reproduction of the data presented in this original study. Original data and large files are placed at an external site save resources inlcuding count matrices, spot files, HE-images, masks, h5ad-files, etc. and can be accessed at [insert link to zenodo repo]. 
+This repository provides data and code to reproduce data presented in "_Spatial
+Transcriptomics to define transcriptional patterns of zonation and structural
+components in the liver_", and show-cases the applicability and potential to
+study tissue transcriptomics computationally. In this study, Spatial
+Transcriptomics was performed on liver tissue sections of female wildtype mice
+of 8-12 weeks of age. All scripts presented here are designed to be used with
+any kind of spatial transcriptomics data and provide detailed documentation for
+the reproduction of the data presented in this original study. Original data and
+large files are placed at an external site save resources inlcuding count
+matrices, spot files, HE-images, masks, h5ad-files, etc. and can be accessed at
+[zenodo](10.5281/zenodo.4399655).
 
-## Structure
+- [Overview](#overview)
+- [System Requirements](#system-requirents)
+- [hepaquery](#hepaquery)
+ - [Dependencies](#dependencies)
+ - [Installation](#installation)
+ - [Data Preparation](#data-preparation)
+- [Data Access](#data-access)
+- [License](#license)
+
+<hr>
+
+## Overview
+
+Below is an overview of the structure of this repository, including brief descriptions of respective item.
 
 * `data` - contains processed data to be used in the analysis (files must be downloaded from an external resource, see below)
 	* `gene lists`
@@ -22,12 +45,41 @@ This repository provides data and code to reproduce data presented in "Spatial T
 * `hepaquery` - files constituting the `hepaquery` package
 * `setup.py` - installation file for `hepaquery` module
 
-## hepaquery Installation
+## System Requirements
+The code should be compatible with all systems that support `R` and `python`. We recommend the following software versions:
+- `R >= 3.5`
+- `python >= 3.7`
+
+To reproduce the analysis presented in the `jupyter-notebooks` and `R markdown` files, the packages listed below must be installed
+
+- `jupyter-notebook` | [LINK](https://jupyter.org/install) | Python
+- `rmarkdown` | [LINK](https://rmarkdown.rstudio.com/docs/) | R
+
+
+## hepaquery
 To facilitate reproduction of our results and enable easy exploration of similar
 data sets using the methods we present in this work, we have packaged these into
 a Python module called `hepaquery`. This, among other things, contains functions
 to generate _feature\_by\_distance_ plots, classification of vein types based on
 neighborhood expression profiles (NEPs), and evaluation of prediction results.
+
+### Dependencies
+
+The `hepaquery` package mainly relies on the python scientific framework, and
+will be installed automatically when running the commands in the next section.
+However, to list the packages and their recommended versions:
+
+```
+scikit-misc
+numpy>=1.19.0
+pandas>=1.0.0
+anndata>=0.7.5
+scipy>=1.5.4
+scikit-learn>=0.23.2
+matplotlib>=3.3.3
+```
+
+### Installation
 To install this package, do:
 
 1. Enter a terminal window, change directory to this repository and type
@@ -37,7 +89,9 @@ $> python3 setup.py install
 
 ```
 
-Depending on your OS and user configurations, you might have to add `--user` for this to work.
+Depending on your OS and user configurations, you might have to add `--user` for
+this to work. The installation takes only a few seconds on a standard laptop
+computer.
 
 2. Next, to test if the installation work, enter the following into the terminal:
 
@@ -48,8 +102,12 @@ $> python3 -c "import hepaquery; print(hepaquery.__version__)"
 If everything went as expected, this should print the version of `hepaquery` in your terminal.
 
 The notebook `scripts/vein-analysis.ipynb` illustrates the usage of `hepaquery`.
+Here the examples of the expected output when running `hepaquery` is found, and
+instructions regarding how to reproduce the plots presented in the manuscript.
+The analysis on the data in this study takes less than 5 minutes when run on a
+laptop computer.
 
-## Prepare data for hepaquery analysis
+### Data Preparation
 
 To conduct the feature by distance analysis, the data must first be curated and
 formatted. For this purpose we provide the `scripts/prepare-data.py` script,
@@ -86,7 +144,7 @@ And `h5ad` files containing the essential information used in the
 `vein-analysis.ipynb` files will be produced. For more information regarding the
 parameters that may be used, simply do `python3 ./prepare-data.py -h`.
 
-## Accessing Data
+## Data Access
 
 While GitHub supports storage of large files via the LFS system, we have placed our files at an external site to prevent unnecessary use of resources. The count matrices, spot files, HE-images and masks can be accessed at [this](link) link. To download all data and place it in the expected (by the scripts) location, you can also go to `scripts`, open a terminal and do:
 
@@ -94,3 +152,6 @@ While GitHub supports storage of large files via the LFS system, we have placed 
 $> chmod +x ./fetch-data.sh
 $> ./fetch-data.sh
 ```
+
+## License
+This work is covered under the **MIT License**.

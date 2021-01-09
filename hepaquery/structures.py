@@ -6,7 +6,7 @@ from scipy.spatial.distance import cdist
 from sklearn.linear_model import LogisticRegression as LR
 from functools import reduce
 
-from utils import iprint,eprint
+from hepaquery.utils import iprint,eprint
 
 from typing import *
 

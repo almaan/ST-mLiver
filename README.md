@@ -12,14 +12,14 @@ large files are placed at an external site save resources inlcuding count
 matrices, spot files, HE-images, masks, h5ad-files, etc. and can be accessed at
 [zenodo](10.5281/zenodo.4399655).
 
-- [Overview](#overview)
-- [System Requirements](#system-requirents)
-- [hepaquery](#hepaquery)
- - [Dependencies](#dependencies)
- - [Installation](#installation)
- - [Data Preparation](#data-preparation)
-- [Data Access](#data-access)
-- [License](#license)
+* [Overview](#overview)
+* [System Requirements](#system-requirents)
+* [hepaquery](#hepaquery)
+    * [Dependencies](#dependencies)
+    * [Installation](#installation)
+    * [Data Preparation](#data-preparation)
+* [Data Access](#data-access)
+* [License](#license)
 
 <hr>
 

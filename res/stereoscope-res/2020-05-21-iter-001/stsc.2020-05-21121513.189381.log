@@ -1,6 +1,0 @@
-[2020-05-21 12:15:13,222 - stsc - INFO ] >> Using device cuda
-[2020-05-21 12:15:13,222 - stsc - INFO ] >> fitting sc data | count file : /home/alma.andersson/stsc/franzi/data/sc/sc-liver-count-data-1.tsv.gz | labels file : /home/alma.andersson/stsc/franzi/data/sc/sc-liver-metadata-1.tsv
-[2020-05-21 12:16:00,676 - stsc - INFO ] >> SC data GENES : 5000  SC data CELLS : 4424  SC data TYPES : 20 
-[2020-05-21 16:08:05,379 - stsc - INFO ] >> fit st data section(s) : ['/home/alma.andersson/stsc/franzi/data/st/st-liver-count-data-C1.tsv.gz']
-[2020-05-21 16:08:21,692 - stsc - INFO ] >> ST data GENES : 5000  ST data SPOTS : 1934 
-[2020-05-21 17:18:48,566 - stsc - INFO ] >> saving proportions for section st-liver-count-data-C1.tsv to /home/alma.andersson/stsc/franzi/res/iter-002/st-liver-count-data-C1.tsv/W.2020-05-21121513.189381.tsv

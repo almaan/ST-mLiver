@@ -1,0 +1,1815 @@
+---
+title: "Review ST-Liver"
+output: html_notebook
+---
+
+
+```{r, load required packages,warning = FALSE, results='hide'}
+
+library(Seurat)
+library(dplyr)
+library(STutility)
+library(tidyverse)
+library(spdep)
+library(gprofiler2)
+library(corrplot)
+library(readxl)
+library(xlsx)
+library(stringr)
+library(scico)
+library(RColorBrewer)
+library(biomaRt)
+library(pheatmap)
+
+```
+
+###Reviewer comment: "The paper discusses pericentral hepatocyte genes and periportal hepatocyte genes, what about the mid-lobule-peaking genes such as Hamp, Hamp2 and Igfbp2. Are they expressed in the ‘intermediate’ cluster 0? In a related note, Figure 1C does not show any markers for cluster 0, is this a real cluster or simply spots with low number of reads? A violinplot of log10 (numbers of reads) for each cluster + umap such as Figure 1b colored by log10(number of reads per cell) would be highly informative here. If cluster 0 spots consist of low-read spots I think they should be removed."
+
+1: Visualize expression of mid-lobule-peaking genes in umap and visualize the expression of these genes across clusters (bar-graph with normalized read-count of each gene across all clusters)
+
+2: Create a violinplot of log10(number of reads) for each cluster 
+
+3. Create Umap colored by log10(number of reads) for each cluster 
+
+###1
+```{r, expression of mid-lobule peaking genes in umap, fig.width= 20, fig.height=5}
+
+mid.l <- c("Hamp", "Hamp2", "Igfbp2")
+
+#Change defaultassay to SCT 
+
+DefaultAssay(se.cca) <- "SCT"
+
+#Export plot for each gene individually 
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1-Igfbp2-umap.png", width = 4200, height = 3000, res = 300)
+print(FeaturePlot(object = se.cca,
+            features = "Igfbp2", 
+            label = T, 
+            label.size = 12,
+            pt.size = 2,
+            cols = c("grey","darkolivegreen3", "darkgreen")) + 
+                  theme(axis.ticks = element_blank(), 
+                  axis.text = element_blank(), 
+                  axis.title = element_blank()))
+dev.off()
+
+```
+
+
+```{r, calculate log10(number of reads)/cluster}
+
+DefaultAssay(se.cca) <- "SCT"
+#Subset matrix for only one gene 
+spt_s_0 <- rownames(subset(se.cca[[]], assay = "SCT", seurat_clusters %in% c("0")))
+spt_s_1 <- rownames(subset(se.cca[[]], assay = "SCT", seurat_clusters %in% c("1")))
+spt_s_2 <- rownames(subset(se.cca[[]], assay = "SCT", seurat_clusters %in% c("2")))
+spt_s_3 <- rownames(subset(se.cca[[]], assay = "SCT", seurat_clusters %in% c("3")))
+spt_s_4 <- rownames(subset(se.cca[[]], assay = "SCT", seurat_clusters %in% c("4")))
+spt_s_5 <- rownames(subset(se.cca[[]], assay = "SCT", seurat_clusters %in% c("5")))
+
+
+
+se.sub <- SubsetSTData(se.cca, spots = spots_select)
+nHamp <- sum(se.sub@assays$SCT@counts[rownames(se.sub@assays$SCT@counts) == "Hamp"])
+
+
+#sum of reads for each cluster 
+
+clusters <- c(0,1,2,3,4,5)
+
+#subset data 
+
+nreads.clusters <- sapply(clusters, function(y){
+  subset(se.cca@meta.data$nCount_SCT, se.cca@meta.data$seurat_clusters == y)
+})
+
+names(nreads.clusters) = clusters
+
+sum.reads.clusters <- sapply(nreads.clusters, function(x) {
+ sum(x)
+})
+
+#Sum of only one gene (e.g. Hamp)
+
+cluster_spots <- list(spt_s_0, spt_s_1,spt_s_2,spt_s_3, spt_s_4, spt_s_5)
+
+names(cluster_spots) <- c("spt_s_0", "spt_s_1","spt_s_2","spt_s_3", "spt_s_4", "spt_s_5")
+
+se.sub.l <- sapply(cluster_spots, function(z){
+  SubsetSTData(se.cca, spots = z)
+})
+
+names(se.sub.l) <- c("se.0","se.1", "se.2", "se.3", "se.4", "se.5")
+
+##get all counts for each cluster
+
+#NOTE: When setting nCount_RNA you get the raw count data, when setting the assay to SCT - you get the normalized and scaled reads 
+
+n.count.all <- sapply(se.sub.l, function(a){
+  sum(a@meta.data$nCount_RNA)
+})
+#get counts for Hamp
+
+n.count.Hamp <- sapply(se.sub.l, function(b){
+  sum(b@assays$SCT@counts[rownames(b@assays$RNA@counts) == "Hamp"])
+})
+
+#get counts for Hamp2
+
+n.count.Hamp2 <- sapply(se.sub.l, function(b){
+  sum(b@assays$SCT@counts[rownames(b@assays$RNA@counts) == "Hamp2"])
+})
+
+#get counts for Igfbp2
+
+n.count.Igfbp2 <- sapply(se.sub.l, function(b){
+  sum(b@assays$SCT@counts[rownames(b@assays$RNA@counts) == "Igfbp2"])
+})
+
+#Make dataframe from all the values
+
+df <- data.frame(n.count.all, n.count.Hamp , n.count.Hamp2 , n.count.Igfbp2)
+
+#normalize the data by the total number of reads
+
+df$norm.n.Hamp <- n.count.Hamp/n.count.all
+df$norm.n.Hamp2 <- n.count.Hamp2/n.count.all
+df$norm.n.Igfbp2 <- n.count.Igfbp2/n.count.all
+
+df
+
+#Visualize in a barplot (with the value on the y-axis and the cluster on the x-axis (For each gene)
+
+p.hamp <- ggplot(df, aes(rownames(df), norm.n.Hamp, fill = rownames(df))) + 
+      geom_bar(stat = "identity") + 
+      scale_fill_manual(values = cluster.cols) + 
+      scale_x_discrete(labels = c("0", "1", "2", "3", "4", "5"), name = "cluster") + 
+      scale_y_continuous(name = "normalized expression (Hamp)") +
+      theme(legend.position = "none", axis.text = element_text(size = 12), 
+            axis.title = element_text(size = 12), 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black"))
+
+p.hamp2 <- ggplot(df, aes(rownames(df), norm.n.Hamp2, fill = rownames(df))) + 
+      geom_bar(stat = "identity") + 
+      scale_fill_manual(values = cluster.cols) + 
+      scale_x_discrete(labels = c("0", "1", "2", "3", "4", "5"), name = "cluster") + 
+      scale_y_continuous(name = "normalized expression (Hamp2)") +
+      theme(legend.position = "none", axis.text = element_text(size = 12), 
+            axis.title = element_text(size = 12), 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black"))
+
+
+p.igfbp2 <- ggplot(df, aes(rownames(df), norm.n.Igfbp2, fill = rownames(df))) + 
+      geom_bar(stat = "identity") + 
+      scale_fill_manual(values = cluster.cols) + 
+      scale_x_discrete(labels = c("0", "1", "2", "3", "4", "5"), name = "cluster") + 
+      scale_y_continuous(name = "normalized expression (Igfbp2)") +
+      theme(legend.position = "none", axis.text = element_text(size = 12), 
+            axis.title = element_text(size = 12), 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black"))
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/ncount_raw_hamp.png", width = 12, height = 8, units = "cm", res = 600)
+print(p.hamp)
+dev.off()
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/ncount_raw_hamp2.png", width = 12, height = 8, units = "cm", res = 600)
+print(p.hamp2)
+dev.off()
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/ncount_raw_igfbp2.png", width = 12, height = 8, units = "cm", res = 600)
+print(p.igfbp2)
+dev.off()
+
+```
+
+###2
+
+```{r,visualize no of reads in violin-plot}
+
+cluster.cols = c("yellow3", "blue3", "red3", "turquoise3","darkorange1","green4")
+
+VlnPlot(se.cca,
+        features = "nCount_SCT",
+        cols = cluster.cols)
+
+se.cca$log_nRNA <- log10(se.cca@meta.data$nCount_RNA)
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/log10nreadsViolin.png", width = 3000, height = 1500, res = 300)
+VlnPlot(se.cca,
+        features = "log_nRNA", 
+        cols = cluster.cols)
+dev.off()
+
+```
+
+###3
+
+```{r, visualize in umap, colored by log10(number of reads)}
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/log10nreadsUmap.png", width = 4200, height = 3000, res = 300)
+FeaturePlot(se.cca, features = "log_nRNA",
+            label = T, 
+            label.size = 12,
+            pt.size = 2,
+            cols = c("darkslategray2", "darkslategray4", "darkslategrey")) + 
+                  theme(axis.ticks = element_blank(), 
+                  axis.text = element_blank(), 
+                  axis.title = element_blank())
+dev.off()
+
+```
+
+
+
+###Reviewer comment: "The liver consists of zonated non-parenchymal cell populations (NPCs). The authors should attempt to produce an expression by distance plot for these as well. For example, highly zonated endothelial genes (PMID 30222169) include the pericentral genes Thbd and Cdh13 and the periportal Efnb2 and Ltbp4. Highly zonated hepatic stellate cell genes (PMID 31722201) include the pericentral Adamtsl2 and Sox4 and the periportal Ngfr and Tagln. The authors should explore whether these genes show up in the ST data and produce their zonation plots. In addition, the authors should explore the concept of immune zonation (PMID 33239787) – is there a higher summed expression of immune genes in periportal spots (this would be expected based on the increased abundance of periportal immune cells previously reported? Are there zonated Kupffer cell genes? One approach to address the zonation of NPCs would be to extract genes specific to the particular NPC population of interest and then perform DGE between spots in cluster 1 and 2 over the expression matrix normalized by the sum of these NPC-specific genes (for example see PMID 32814046)."
+
+*In addition, the authors should explore the concept of immune zonation (PMID 33239787) – is there a higher summed expression of immune genes in periportal spots (this would be expected based on the increased abundance of periportal immune cells previously reported?*
+
+###Approach 1: To specifically approach the questions whether there is a difference in immune-gene distribution within the tissue one approach could be to extract genes belonging to the GO-term immune-system process (GO:0002376) of the gene - expression matrix and run a DGEA between cluster 1 (portal) and cluster 2 (central). 
+
+```{r, create a gene table that includes the GO-terms and extract only the genes that belong to these GO terms}
+
+mart <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+go.table.st <- getBM(filters= "external_gene_name", attributes= c("ensembl_gene_id", "external_gene_name", "description", "go_id","name_1006", "namespace_1003"), values= rownames(se.cca), mart= mart)
+
+#write.table(genes.table,file="data/ILC/gene_name_go_translation.tab",sep="\t")
+
+```
+
+###Approach 2: To specifically approach the questions whether there is a difference in immune-gene dsitribution within the tissue one approach could be to extract genes belonging to the GO-term immune-system process (GO:0002376) of the DGEA and run a heatmap analysis between cluster 1 (portal) and cluster 2 (central). 
+
+
+```{r, run DGEA specifically between cluster 1 and cluster 2, start with default theshholds}
+
+markers.p.c <- FindMarkers(se.cca, ident.1 = 1, ident.2 = 2)
+head(markers.p.c)
+
+```
+
+```{r, subset DGEA according to immune related processes}
+
+#Input: pairwise DE for mature vs. immature cells at 12h 
+
+go.p.c <- go.table[go.table$external_gene_name %in% rownames(markers.p.c) ,]
+
+#subset so you only have the "immune system process" genes 
+
+go.p.c <- go.p.c[go.p.c$name_1006 == "immune system process" ,]
+
+#subset the DEG at 12h for only genes related to immune system processes
+
+markers.p.c.im <- markers.p.c[rownames(markers.p.c) %in% go.p.c$external_gene_name ,]
+
+```
+
+```{r, generate heatmap}
+
+##generate the matrix to perform the heatmaps with 
+#extract the matrix (according to your preferences - you don't have to specifiy previous clustering but you can)
+gene_data <- data.frame(t(as.matrix(se.cca@assays$SCT@data)),cluster=se.cca$seurat_clusters,check.names = F)
+#average data over clusters 
+average_data <- aggregate(.~cluster, gene_data, mean)
+cluster_name <- average_data[,1]
+average_data <- apply(average_data[,2:ncol(average_data)],2,as.numeric)
+rownames(average_data) <- cluster_name
+average_data <- t(average_data)
+phmat1 <- t(scale(t(average_data)))
+#create matrix for averaged expression-values between -1.5 and 1.5 (this can be adjusted)
+phmat1[phmat1> 1.5] <- 1.5
+phmat1[phmat1 < -1.5] <- -1.5
+
+pheatmap(phmat1[rownames(markers.p.c.im),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "correlation", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(200))
+
+```
+
+
+
+*Are there zonated Kupffer cell genes? One approach to address the zonation of NPCs would be to extract genes specific to the particular NPC population of interest and then perform DGE between spots in cluster 1 and 2 over the expression matrix normalized by the sum of these NPC-specific genes (for example see [PMID 32814046|(https://www.cell.com/cell-reports/fulltext/S2211-1247(20)31028-7)).*
+
+Extract immune-related genes (GO:0002376), Kupffer cell signature in a sc-data-set and other gene signatures
+
+1. Extract genes specific for immune-related processes from expression-matrix 
+2. make this the default data for the seurat-analysis 
+3. run DGEA analysis for this new set between cluster 1 and cluster 2
+4. normalize for smaller number of genes - 1) normalize by number of genes 
+                                           2) run SCtransform again before running DGEA
+
+```{r, extract immune related genes and normalize by total number of genes}
+
+#get table with all the GO terms inclucing go terms of genes in the CCA object
+go.se.cca <- go.table[go.table$external_gene_name %in% rownames(se.cca@assays$RNA) ,]
+
+#suset for immune-related processes
+go.se.cca <- go.se.cca[go.se.cca$name_1006 == "immune system process" ,]
+
+#subset the DEG at 12h for only genes related to immune system processes
+
+cca.im <- se.cca@assays$RNA[rownames(se.cca@assays$RNA@counts) %in% go.se.cca$external_gene_name ,]
+
+#Create a new data object in the seurat-object only including genes in immune-related processes
+se.cca[["immune.counts"]] <- CreateAssayObject(counts = cca.im)
+#normalize by the number of genes
+se.cca[["immune.counts.norm"]] <- CreateAssayObject(counts = as.matrix(se.cca@assays$immune.counts@counts)/nrow(se.cca@assays$immune.counts@counts))
+
+```
+
+```{r, normalize using SCTransform}
+#Normalize the count data (using sc transform here again since I accesses the raw counts)
+#However I wonder if it would make more sense to perform a different kind of normalization for this purpose and extract normalized values already? 
+se.cca <- SCTransform(se.cca, 
+                      assay = "immune.counts", 
+                      new.assay.name = "SCT_im")
+
+```
+
+```{r, run DGEA between cluster1 and cluster 2}
+
+#Find DEG between cluster 1 (portal) and cluster 2 (central), set threshold very low to also pick up small gene expression differences
+
+immune.markers <- FindMarkers(se.cca, assay = "immune.counts", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.001)
+
+immune.markers <- subset(immune.markers, p_val_adj < 0.05)
+
+nrow(immune.markers)
+
+#This gives me a quite similar result to the above result when extracting markers from the original CCA object and running DGEA with immune-related genes
+
+```
+
+I am slightly unsure about the normalization process. I used 2 different approaches here: 
+
+1) as suggested by the reviewer and if applied correctly I normalized/scaled the counts by the total number of genes in the matrix (immune.counts.norm)
+
+"One approach to address the zonation of NPCs would be to extract genes specific to the particular NPC population of interest and then perform DGE between spots in cluster 1 and 2 over the expression matrix normalized by the sum of these NPC-specific genes (for example see PMID 32814046)."
+
+If I understand this correctly this way I would simply scale the expression values according to the adjusted number of genes? 
+
+Here is what is described in [PMID 32814046](https://doi.org/10.1016/j.celrep.2020.108043):
+
+"To estimate the degree of representation of non-islet transcripts we
+examined the islet RNaseq expression of a concise subset of 50 cell-type specific genes for each of the 6 cell types considered (Figure
+2A; Table S2). To this end, we identified the genes in Tabula Muris with mean expression above 10^4 of cellular transcriptome,
+ranked the ratio between the mean expression in the cell type of interest and the maximal mean expression in any other cell type and
+maintained the top 50 genes. We computed the relative fraction of the summed expression of each cell-type specific gene set. Tabula
+Muris dataset was normalized to the sum of UMIs."
+
+2) Performed the normalization based on scTransform performs i) a log transformation of the feature expression measurements for each spot by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result. ii) calculates a subset of features that exhibit high cell-to-cell variation in the dataset (i.e, they are highly expressed in some cells, and lowly expressed in others and iii) scales the data according to number of reads (log.transformed reads). One possibility to normalize here is that we use the number of genes, i.e. rows, as a variable to regress out? - but I would like to get an opinion on if that makes sense, since I am quite unsure about it. 
+
+In addition: If I merely divide the counts (without log-transformation) by the number of genes in the matrix I don't get any differential expression unless I set the logFC-threshold very low. I would be very grateful for any input on that - to understand it better! 
+
+```{r, compare averaged expression of immune related genes between cluster 1 and cluster 2}
+
+#subset the object for cluster 1 and cluster 2
+
+se.cca.1 <- SubsetSTData(se.cca, spots = rownames(subset(se.cca[[]], seurat_clusters %in% 1)))
+
+se.cca.2 <- SubsetSTData(se.cca, spots = rownames(subset(se.cca[[]], seurat_clusters %in% 2)))
+#calculate the avg nCount for immune related processes (nCount_immune-counts) for all spots belonging to cluster1 and cluster2 and compare 
+
+avg <- AverageExpression(se.cca, assays = "RNA", features = go.se.cca$external_gene_name, group.by = "seurat_clusters")
+avg <- as.data.frame(avg$RNA)
+avg <- avg[,c(2,3)]
+colnames(avg) <- c("cluster_1 (portal)", "cluster_2 (central)")
+avg$gene <- rownames(avg)
+avg <- avg[, c(3,1,2)]
+
+#add a table with the avg expression of genes in the supplement
+write.table(avg, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/avg_exp_c1_c2_im.tsv",row.names = F, sep = "\t")
+
+#calculate the log(sums) of the average expression for each cluster
+
+sum.c1 <- log(sum(avg$cluster_1))
+sum.c2 <- log(sum(avg$cluster_2))
+
+sum.c1
+sum.c2
+
+```
+
+
+
+```{r, visualize the results of the DGEA in a heatmap}
+
+gene_data <- data.frame(t(as.matrix(se.cca@assays$SCT_im@data)),cluster=se.cca$seurat_clusters,check.names = F)
+#average data over clusters 
+average_data <- aggregate(.~cluster, gene_data, mean)
+cluster_name <- average_data[,1]
+average_data <- apply(average_data[,2:ncol(average_data)],2,as.numeric)
+rownames(average_data) <- cluster_name
+average_data <- t(average_data)
+phmat <- t(scale(t(average_data)))
+#create matrix for averaged expression-values between -1.5 and 1.5 (this can be adjusted)
+phmat[phmat > 1.5] <- 1.5
+phmat[phmat < -1.5] <- -1.5
+
+pheatmap(phmat[rownames(immune.markers),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+```
+
+###Perform the same analysis for LEC-cell signature, for immune-zonation purposes we are specifically interested in the distribution of Kupffer cells
+
+
+I extracted a gene signature for Kupffer-cell signature from the DGEA of [PMID: 30222169](https://pubmed-ncbi-nlm-nih-gov.ezp.sub.su.se/30222169/), see: "review-ST-Liver-scAnalysis.Rmd"
+the signature includes 130 significantly (p_val:adj < 0.05) DE genes with a avg_logFC > 1. 
+
+```{r, extract counts with Kupffer cell signature from expression matrix and run DGEA between cluster 1 and cluster 2}
+
+k.sig <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/kupffer_cells/kupffer_all.txt", row.names = 1, col.names = F)
+nrow(k.sig)
+
+#subset the count matrix according to only the kupffer-cell signature:
+
+kcell.mat <- se.cca@assays$SCT[rownames(se.cca@assays$SCT) %in% k.sig ,]
+se.cca[["k.cell"]] <- CreateAssayObject(counts = kcell.mat)
+
+kcell.markers <- FindMarkers(se.cca, assay = "kcell.norm", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.0001)
+
+kcell.markers <- subset(kcell.markers, p_val_adj < 0.05)
+kcell.markers <- kcell.markers[order(-kcell.markers$avg_log2FC),]
+
+#subset the 5 highest and 5 lowest effect size genes (+ values = portal expression, - values = central expression as a short list
+kcell.short <- kcell.markers[c(1:3,18:20),]
+
+write.table(as.vector(rownames(kcell.short)), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/st-lec/kupffer/st-kcell_short.txt", row.names = F, col.names = F, quote = F)
+
+```
+
+With this method we don't receive a whole lot of genes but 4 genes from the Kupffer-cell signature that show DGE between cluster 1 (portal) and cluster 2 (central) we can visualize these genes in a heatmap
+
+```{r, visualize the results of the DGEA (kupffer cells) in a heatmap}
+
+pheatmap(phmat[rownames(kcell.markers),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+```
+
+We can also run this analysis for the remaining immune-populations (B cells, T cells, Neutrophils, pDCs and LCMs). For B cells and T cells there only is a very small number of genes that were extracted from the sc-data set which is why we only get 1 or 2 genes that we can visualize for differential genes expression with very low effect size. Therefore, genes that have more marker genes present, such as endothelial cells, Neutrohils, pDCs and lcms (Neutrohils, pDCs and LCMs have to little counts to be able to normalize them using SCtransform) will be used to infer on differential expression between cluster 1 and cluster 2. 
+
+```{r, load all the gene sets of the remaining LECs}
+
+endo.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/endothelial_cells/endothelial_all.txt", col.names = F)[,1])
+
+b.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/b_cells/bcell_all.txt", col.names = F)[,1])
+#very small number of genes 
+
+t.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/t_cells/tcell_all.txt", col.names = F)[,1])
+#very small number of genes 
+
+neut.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/neutrophils/neutro_all.txt", col.names = F)[,1])
+#very small number of genes 
+
+pDC.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/pDCs/pDC_all.txt", col.names = F)[,1])
+
+lcm.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/lcms/lcm_all.txt",  col.names = F)[,1])
+
+k.sig <- as.vector(read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern/kupffer_cells/kupffer_all.txt", col.names = F)[,1])
+
+```
+
+#additional normalization will not be possible since the normalization suggested by the reviewer is designed for bluk data which is not applicable/suitable for our kind of data
+
+
+```{r, endothelial cell matrix}
+
+#subset the count matrix according to only the kupffer-cell signature:
+
+endo.mat <- se.cca@assays$SCT[rownames(se.cca@assays$SCT) %in% endo.sig ,]
+se.cca[["endo"]] <- CreateAssayObject(counts = endo.mat)
+
+endo.markers <- FindMarkers(se.cca, assay = "endo", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.001)
+
+endo.markers <- subset(endo.markers, p_val_adj < 0.05)
+
+nrow(endo.markers)
+endo.markers <- endo.markers[order(-endo.markers$avg_log2FC),]
+endo.short <- endo.markers[c(1:3, 12:14),]
+
+write.table(as.vector(rownames(endo.short)), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/st-lec/endo/st-endo_short.txt", row.names = F, col.names = F, quote = F)
+
+```
+
+```{r, neutrophils matrix}
+
+#subset the count matrix according to only the kupffer-cell signature:
+
+neut.mat <- se.cca@assays$SCT[rownames(se.cca@assays$SCT) %in% neut.sig ,]
+
+se.cca[["neut"]] <- CreateAssayObject(counts = neut.mat)
+
+neut.markers <- FindMarkers(se.cca, assay = "neut", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.001)
+
+neut.markers <- subset(neut.markers, p_val_adj < 0.05)
+
+nrow(neut.markers)
+
+```
+
+```{r, pDC matrix}
+
+#subset the count matrix according to only the kupffer-cell signature:
+
+pDC.mat <- se.cca@assays$SCT[rownames(se.cca@assays$SCT) %in% pDC.sig ,]
+
+se.cca[["pDC"]] <- CreateAssayObject(counts = pDC.mat)
+
+pDC.markers <- FindMarkers(se.cca, assay = "pDC", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.001)
+
+pDC.markers <- subset(pDC.markers, p_val_adj < 0.05)
+
+nrow(pDC.markers)
+
+```
+
+
+```{r, lcm matrix}
+
+#subset the count matrix according to only the kupffer-cell signature:
+
+lcm.mat <- se.cca@assays$SCT[rownames(se.cca@assays$SCT) %in% lcm.sig ,]
+se.cca[["lcm"]] <- CreateAssayObject(counts = lcm.mat)
+
+
+lcm.markers <- FindMarkers(se.cca, assay = "lcm", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.001)
+
+lcm.markers <- subset(lcm.markers, p_val_adj < 0.05)
+lcm.markers <- lcm.markers[order(-lcm.markers$avg_log2FC),]
+lcm.short <- lcm.markers[c(1:3, 7:9),]
+
+write.table(as.vector(rownames(lcm.short)), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/st-lec/lcm/st-lcm_short.txt", row.names = F, col.names = F, quote = F)
+
+```
+
+
+```{r, visualize the differential gene expression in heatmaps (individual assays with only marker genes)}
+
+##endothelial cells
+
+gene_data <- data.frame(t(as.matrix(se.cca@assays$SCT@data)),cluster=se.cca$seurat_clusters,check.names = F)
+#average data over clusters 
+average_data <- aggregate(.~cluster, gene_data, mean)
+cluster_name <- average_data[,1]
+average_data <- apply(average_data[,2:ncol(average_data)],2,as.numeric)
+rownames(average_data) <- cluster_name
+average_data <- t(average_data)
+phmat <- t(scale(t(average_data)))
+#create matrix for averaged expression-values between -1.5 and 1.5 (this can be adjusted)
+phmat[phmat > 1.5] <- 1.5
+phmat[phmat < -1.5] <- -1.5
+
+pheatmap(phmat[rownames(endo.markers),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+##neutrophils
+
+
+pheatmap(phmat[rownames(neut.markers),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+##pDCs
+
+#create matrix for averaged expression-values between -1.5 and 1.5 (this can be adjusted)
+
+pheatmap(phmat[rownames(pDC.markers),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+##LCMs
+
+
+pheatmap(phmat[rownames(lcm.markers),], fontsize_row = 8, cellwidth = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+```
+
+In order to see the differential gene expression effect size better we can plot the aggregated values of the normalized values of the matrix - otherwise we can keep those values and plot the m in the SCT assay of the cca object alone to make them more comparable. 
+
+```{r, visualize the differential gene in SCT assay}
+
+gene_data <- data.frame(t(as.matrix(se.cca@assays$SCT@data)),cluster=se.cca$seurat_clusters,check.names = F)
+#average data over clusters 
+average_data <- aggregate(.~cluster, gene_data, mean)
+cluster_name <- average_data[,1]
+average_data <- apply(average_data[,2:ncol(average_data)],2,as.numeric)
+rownames(average_data) <- cluster_name
+average_data <- t(average_data)
+phmat <- t(scale(t(average_data)))
+#create matrix for averaged expression-values between -1.5 and 1.5 (this can be adjusted)
+phmat[phmat > 1.5] <- 1.5
+phmat[phmat < -1.5] <- -1.5
+
+#immunity markers 
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1/immune_LEC_zonation/immunity_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(immune.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+
+#Kupffer cells
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1/immune_LEC_zonation/Kupffer_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(kcell.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+#endothelial cell
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1/immune_LEC_zonation/Endo_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(endo.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+#neutrophils
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1/immune_LEC_zonation/Neutro_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(neut.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+#pDCs
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1/immune_LEC_zonation/pDCs_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(pDC.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15,clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+#LCMs
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev1/immune_LEC_zonation/LCMs_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(lcm.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+```
+
+
+###Reviewer comment 4: For the deconvolution the authors may want to consider other papers establishing cell-type references from single cell datasets that had more comprehensive coverage of liver NPCs compared to Tabula Muris, e.g. PMID 31398325, PMID 30222169 and PMID 31722201.
+
+####Additional stereoscope analysis 
+
+using annotated single cell datasets from:
+
+1) Sc-data from ["Single-Cell Transcriptomics Uncovers Zonation of Function in the Mesenchyme during Liver Fibrosis"](https://www-sciencedirect-com.ezp.sub.su.se/science/article/pii/S2211124719313245?via%3Dihub) (PMID: 31722201), downloaded from https://doi.org/10.7488/ds/2769 (2021/03/04)
+
+and 
+
+2) ["Paired-cell sequencing enables spatial gene expression mapping of liver endothelial cells"](https://www-nature-com.ezp.sub.su.se/articles/nbt.4231) (PMID: 30222169), received 2021/03/05 by Keren B. Halpern
+
+####1) Sc-data from ["Single-Cell Transcriptomics Uncovers Zonation of Function in the Mesenchyme during Liver Fibrosis"](https://www-sciencedirect-com.ezp.sub.su.se/science/article/pii/S2211124719313245?via%3Dihub) (PMID: 31722201)
+
+```{r, mesenchyme data object , results="hide"}
+
+#Use an infotable as input
+infoTable <- read.table("/Users/franziskahildebrandt/ST-mLiver/stereoscope_data/fibrotic/infotable-stereoscope_fibrotic.csv", sep=";", header=T, stringsAsFactors = F)[c(1, 2, 3, 4, 5,6,7,8), ]
+#Add smaple IDs to infotable: Becomes important for later normalizations
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+#Load in without any filters or restrictions
+stsc <- InputFromTable(infotable = infoTable, #Run in console 
+                   platform = "2k", # set the platform
+                   transpose = T)
+#to prevent confusion we will rename the column "nFeature_RNA" to "n_celltypes" and the column "nCount_RNA" to "sum_pp"
+
+names(stsc@meta.data)[2] <- "sum_pp"
+names(stsc@meta.data)[3] <- "n_celltypes"
+head(stsc[[]])
+
+ST.FeaturePlot(stsc, features = "n_celltypes")
+
+```
+
+```{r, mesenchyme, Load images in proportion value object, results="hide"}
+
+stsc <- LoadImages(stsc)
+
+#ImagePlot(stsc)
+
+stsc <- MaskImages(stsc)
+
+stsc<- ManualAlignImages(stsc)
+
+#adjust the resolution for overlaying proportion-values on tissue 
+#stsc <- SwitchResolution(stsc, xdim = 2e3)
+
+```
+
+For a better visual representation of the distribution of the majority of proportion values for each cell type across the tissue, the values were scaled using quantile scaling. For each section and cell type the 95th percentile of the data was considered. The values were re-scaled to the maximum value for each cell type, resulting in values between 0 and 1 within the same function. 
+
+```{r, quantile scaling function}
+
+scaler <- function(x, q = 0.99) {x[x > quantile(x, q)] <- max(x); scales::rescale(x)}
+
+```
+
+```{r, mesenchyme, scale each sample}
+
+#Subset objects according to section
+se1 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_1"))))
+se2 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_2"))))
+se3 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_3"))))
+se4 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_4"))))
+se5 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_5"))))
+se6 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_6"))))
+se7 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_7"))))
+se8 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_8"))))
+
+
+se.l <- c(se1, se2,se3, se4, se5, se6, se7, se8)
+
+mat.l <- lapply(se.l, function(x){
+  as.data.frame(t(as.matrix((x@assays$RNA@data))))
+})
+
+#To correct for outliers in both directions (low and high values) the 95th percentile of the data was considered and adjusted accordingly in the function for scaling of individual sections.
+
+#CN73-C1
+scale2 <- sapply(mat.l[[1]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[1]])
+
+se1[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se1) <- "scaled2"
+
+#CN73-D1
+scale2 <- sapply(mat.l[[2]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[2]])
+
+se2[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se2) <- "scaled2"
+
+#CN73-E2
+
+scale2 <- sapply(mat.l[[3]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[3]])
+
+se3[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se3) <- "scaled2"
+
+#CN16-D2
+
+scale2 <- sapply(mat.l[[4]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[4]])
+
+se4[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se4) <- "scaled2"
+
+#CN16-E2 
+
+scale2 <- sapply(mat.l[[5]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[5]])
+
+se5[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se5) <- "scaled2"
+
+#CN65-D1
+
+scale2 <- sapply(mat.l[[6]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[6]])
+
+se6[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se6) <- "scaled2"
+
+#CN65-D2
+
+scale2 <- sapply(mat.l[[7]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[7]])
+
+se7[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se7) <- "scaled2"
+
+#CN65-E2
+
+scale2 <- sapply(mat.l[[8]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[8]])
+
+se8[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se8) <- "scaled2"
+
+```
+
+After each section was scaled individually the new objects with adjusted default assays for analysis can be combined again and plotted on the spot coordinates or the brightfield tissue images loaded previously if desired. 
+
+```{r, mesenchyme, combine scaled objects}
+
+se.l <- list(se2, se3, se4, se5, se6, se7, se8)
+
+se.pp <- MergeSTData(se1, se.l)
+
+ST.FeaturePlot(se.pp, features = "n_celltypes")
+
+ST.FeaturePlot(se.pp, features = c("FB", "HSC", "VSMC"), palette = "plasma", indices = c(1,2,3))
+
+
+#Visualize proportions of a cell type list
+ST.FeaturePlot(se.pp, features = hep, ncols.features = 4, pt.size = 1.5, pt.alpha = 1, cols = scico(8,palette = "buda"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F)
+
+#Visualize proportions of only one cell type
+
+ST.FeaturePlot(se.pp, features = "HSC" ,indices = 2, pt.size = 1.2, pt.alpha = 0.8, cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F)
+
+
+```
+
+####2) ["Paired-cell sequencing enables spatial gene expression mapping of liver endothelial cells"](https://www-nature-com.ezp.sub.su.se/articles/nbt.4231) (PMID: 30222169)
+
+
+```{r, NPC data object , results="hide"}
+
+#Use an infotable as input
+infoTable <- read.table("/Users/franziskahildebrandt/ST-mLiver/stereoscope_data/endothelial/infotable-stereoscope_endo.csv", sep=";", header=T, stringsAsFactors = F)[c(1, 2, 3, 4, 5,6,7,8), ]
+#Add smaple IDs to infotable: Becomes important for later normalizations
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+#Load in without any filters or restrictions
+stsc <- InputFromTable(infotable = infoTable, #Run in console 
+                   platform = "2k", # set the platform
+                   transpose = T)
+#to prevent confusion we will rename the column "nFeature_RNA" to "n_celltypes" and the column "nCount_RNA" to "sum_pp"
+
+names(stsc@meta.data)[2] <- "sum_pp"
+names(stsc@meta.data)[3] <- "n_celltypes"
+head(stsc[[]])
+
+ST.FeaturePlot(stsc, features = "n_celltypes")
+
+```
+
+```{r, NPC, Load images in proportion value object, results="hide"}
+
+stsc <- LoadImages(stsc)
+
+#ImagePlot(stsc)
+
+stsc <- MaskImages(stsc)
+
+#stsc<- ManualAlignImages(stsc)
+
+#adjust the resolution for overlaying proportion-values on tissue 
+#stsc <- SwitchResolution(stsc, xdim = 2e3)
+
+```
+
+For a better visual representation of the distribution of the majority of proportion values for each cell type across the tissue, the values were scaled using quantile scaling. For each section and cell type the 95th percentile of the data was considered. The values were re-scaled to the maximum value for each cell type, resulting in values between 0 and 1 within the same function. 
+
+
+```{r, NPC, scale each sample}
+
+#Subset objects according to section
+se1 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_1"))))
+se2 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_2"))))
+se3 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_3"))))
+se4 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_4"))))
+se5 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_5"))))
+se6 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_6"))))
+se7 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_7"))))
+se8 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_8"))))
+
+
+se.l <- c(se1, se2,se3, se4, se5, se6, se7, se8)
+
+mat.l <- lapply(se.l, function(x){
+  as.data.frame(t(as.matrix(x@assays$RNA@data)))
+})
+
+#To correct for outliers in both directions (low and high values) the 95th percentile of the data was considered and adjusted accordingly in the function for scaling of individual sections.
+
+#CN73-C1
+scale2 <- sapply(mat.l[[1]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[1]])
+
+se1[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se1) <- "scaled2"
+
+#CN73-D1
+scale2 <- sapply(mat.l[[2]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[2]])
+
+se2[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se2) <- "scaled2"
+
+#CN73-E2
+
+scale2 <- sapply(mat.l[[3]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[3]])
+
+se3[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se3) <- "scaled2"
+
+#CN16-D2
+
+scale2 <- sapply(mat.l[[4]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[4]])
+
+se4[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se4) <- "scaled2"
+
+#CN16-E2 
+
+scale2 <- sapply(mat.l[[5]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[5]])
+
+se5[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se5) <- "scaled2"
+
+#CN65-D1
+
+scale2 <- sapply(mat.l[[6]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[6]])
+
+se6[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se6) <- "scaled2"
+
+#CN65-D2
+
+scale2 <- sapply(mat.l[[7]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[7]])
+
+se7[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se7) <- "scaled2"
+
+#CN65-E2
+
+scale2 <- sapply(mat.l[[8]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[8]])
+
+se8[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se8) <- "scaled2"
+
+```
+
+After each section was scaled individually the new objects with adjusted default assays for analysis can be combined again and plotted on the spot coordinates or the brightfield tissue images loaded previously if desired. 
+
+```{r, NPC, combine scaled objects}
+
+se.l <- list(se2, se3, se4, se5, se6, se7, se8)
+
+se.pp <- MergeSTData(se1, se.l)
+
+ST.FeaturePlot(se.pp, features = "n_celltypes")
+
+ST.FeaturePlot(se.pp, features = rownames(se1@assays$RNA), palette = "plasma")
+
+
+#Visualize proportions of a cell type list
+ST.FeaturePlot(se.pp, features = hep, ncols.features = 4, pt.size = 1.5, pt.alpha = 1, cols = scico(8,palette = "buda"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F)
+
+#Visualize proportions of only one cell type
+
+ST.FeaturePlot(se.pp, features = "LCM" ,indices = 2, pt.size = 1.2, pt.alpha = 0.8, cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F)
+
+
+```
+#### celltype-proportion correlations are being performed using the corrplot.R script from: https://github.com/almaan/her2st/tree/master/scripts
+
+
+#Reviewer 2: 
+
+###Reviewer question: 2) Validation of cluster 5 structure (comparison with single cell data) it would be good if the authors would carry out some additional experiments to confirm some of their results with regard to the uncharacterised structures found. 
+
+One possibility would be to investigate the intersection of marker genes of cluster 5 and the cell type annotations in the single cell data.
+
+```{r, create intersection of cluster marker genes and celltypes}
+
+#intersection of celltypes of mesenchyme dataset: 
+
+#Find Markers for mesenchyme celltypes: 
+
+#Hepatic stellate cells
+hsc.markers <- FindMarkers(se.fibrotic, ident.1 = "HSC", only.pos = T)
+hsc.markers <- subset(hsc.markers, p_val_adj < 0.05)
+#Fibroblasts
+fb.markers <- FindMarkers(se.fibrotic, ident.1 = "FB", only.pos = T)
+fb.markers <- subset(fb.markers, p_val_adj < 0.05)
+#vascular smooth muscle cells
+vsmc.markers <- FindMarkers(se.fibrotic, ident.1 = "VSMC", only.pos = T)
+vsmc.markers <- subset(vsmc.markers, p_val_adj < 0.05)
+
+#overlapping genes with fibro study 
+HSC.int <- as.vector(intersect(rownames(markers.cca.5), rownames(hsc.markers)))
+FB.int <- as.vector(intersect(rownames(markers.cca.5), rownames(fb.markers)))
+VSMC.int <- as.vector(intersect(rownames(markers.cca.5), rownames(vsmc.markers)))
+
+#overlapping genes with halpern study
+
+#celltypes: c("Endothelial cells", "T cells", "Kupffer cells", "B cells", "LCM", "pDC", "Neutrophils")
+
+#I already extracted the marker gene signature for all these celltypes above, now I append the additional celltypes 
+
+m.celltype.l <-  list(endo.sig,t.sig, k.sig, b.sig,lcm.sig, pDC.sig, neut.sig, rownames(hsc.markers), rownames(fb.markers), rownames(vsmc.markers))
+
+int.l <- sapply(m.celltype.l, function(x){
+  intersect(rownames(markers.cca.5), x)
+})
+
+celltypes <- c("Endothelial cells", "T cells", "Kupffer cells", "B cells", "LCM", "pDC", "Neutrophils", "hepatic stellate cells", "Fibroblasts", "Vascular smooth muscle cells")
+
+names(int.l) <- celltypes
+
+gene <- rownames(markers.cca.5)
+
+endo <- as.character(gene %in% endo.sig)
+tc <- as.character(gene %in% t.sig)
+kc <- as.character(gene %in% k.sig)
+bc <- as.character(gene %in% b.sig)
+lcm <- as.character(gene %in% lcm.sig)
+pDC <- as.character(gene %in% pDC.sig)   
+neutro <- as.character(gene %in% neut.sig)
+hsc <- as.character(gene %in% rownames(hsc.markers))
+fb <- as.character(gene %in% rownames(fb.markers))
+vsmc <- as.character(gene %in% rownames(vsmc.markers))
+
+df.celltypes <- data.frame(gene, endo, tc, kc, bc, lcm, pDC, neutro, hsc, fb, vsmc)
+df.celltypes[df.celltypes == "FALSE"] <- " "
+df.celltypes[df.celltypes == "TRUE"] <- "X"
+
+colnames(df.celltypes)[1] = "Cluster5 marker"
+colnames(df.celltypes)[2] = "Endothelial cells"
+colnames(df.celltypes)[3] = "T cells"
+colnames(df.celltypes)[4] = "Kupffer cells"
+colnames(df.celltypes)[5] = "B cells"
+colnames(df.celltypes)[6] = "Liver capsular macrophages"
+colnames(df.celltypes)[7] = "pDCs"
+colnames(df.celltypes)[8] = "Neutrophils"
+colnames(df.celltypes)[9] = "Hepatic stellate cells"
+colnames(df.celltypes)[10] = "Fibroblasts"
+colnames(df.celltypes)[11] = "Vascular smooth muscle cells"
+
+df.celltypes
+
+write.table(df.celltypes,"~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/marker-intersection.tsv", sep = "\t", col.names = colnames(df.celltypes), row.names = F)
+write.table(markers.cca.5, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev2/markers-cca-5.tsv", sep = "\t", col.names = colnames(markers.cca.5), row.names = F)
+
+```
+
+To test how robust the single cell integration between data-sets is - we can look at the shared quntiles of spots between shared cell types of different data sets. To do so we 
+
+1) Find shared cell types between datasets
+2) Take the N*q/100 of spots with the highest proportion values, since we used the 95th quantile for scaling in the visualization I would begin with this 
+3) See how many of the same spots are selected between the two datasets 
+
+```{r, get percentile ranks of pp-values for mca data}
+
+#MCA
+mca.n <- c("Endothelial cell(Liver)", "B cell-Fcmr high(Liver)" , "B cell-Jchain high(Liver)",  "T cell-Gzma high(Liver)" , "T cell-Trbc2 high(Liver)", "Kuppfer cell(Liver)", "Neutrophil-Ngp high(Liver)")
+#load object
+mca.pp <- readRDS("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/mca-steroscope-object")
+
+mca <- as.data.frame(t(as.matrix(mca.pp@assays$RNA@counts)))
+mca <- subset(mca.pp)[mca.n]
+mca.n <- c("endo", "bcell.1" ,"bcell.2", "tcell.1" , "tcell.2", "kcell", "neutro")
+colnames(mca) <- mca.n
+#take the Nth percentile of the spots for each of the cell types 
+
+mca.l <- lapply(mca.n, function(x){
+  as.data.frame(subset(mca)[x]) 
+  })
+names(mca.l) <- mca.n
+
+mca.l <- lapply(mca.l, function(x){
+  mutate(x, "percentile_rank" = ntile(x[,1],100)) 
+})
+spot.l <- lapply(mca.l, function (x){
+  rownames(x[])
+})
+#append the spots as an extra column to each dataframe in the list 
+mca.l <- Map(cbind, mca.l, "spot" = spot.l)
+
+```
+
+```{r, get percentile ranks of pp-values for lec data}
+##LEC
+lec <- c("Endothelial cells","T cells", "B cells", "Kupffer cells", "Neutrophils")
+
+#load object
+npc.pp <- readRDS("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/npc-steroscope-object")
+
+#take the 95th percentile of the spots for each of the cell types 
+
+npc <- as.data.frame(t(as.matrix(npc.pp@assays$RNA@counts)))
+npc <- subset(npc)[lec]
+npc.n <- c("endo", "bcell", "tcell", "kcell", "neutro")
+colnames(npc) <- npc.n
+#take the Nth percentile of the spots for each of the cell types 
+
+npc.l <- lapply(npc.n, function(x){
+  as.data.frame(subset(npc)[x]) 
+  })
+names(npc.l) <- npc.n
+
+npc.l <- lapply(npc.l, function(x){
+  mutate(x, "percentile_rank" = ntile(x[,1],100)) 
+})
+
+spot.l <- lapply(npc.l, function (x){
+  rownames(x[])
+})
+#append the spots as an extra column to each dataframe in the list 
+npc.l <- Map(cbind, npc.l, "spot" = spot.l)
+```
+
+
+```{r, generate a dataframe  with nspots/percentile for each dataset}
+#write a function to generate data for a number of cells with increments of 5 
+
+n <- seq(0, 100, by=5)
+
+#npc data
+p.m.l<- lapply(npc.l, function (y){
+  sapply(n, function(x){
+   subset(y,y[2] > x)
+ })})
+
+#extract only rows with spots 
+p.m.l <- lapply(p.m.l, function(x){
+  x["spot",]})
+
+p.m.l <- lapply(p.m.l, function(x){
+as.data.frame(do.call(cbind, x))  
+})
+
+#mca data
+
+p.m.2.l<- lapply(mca.l, function (y){
+  sapply(n, function(x){
+   subset(y,y["percentile_rank"] > x)
+ })})
+
+#extract only rows with spots 
+p.m.2.l <- lapply(p.m.2.l, function(x){
+  x["spot",]})
+
+p.m.2.l <- lapply(p.m.2.l, function(x){
+as.data.frame(do.call(cbind, x))  
+})
+```
+
+```{r, run intersections between datasets and plot the data}
+#intersect the individual columns for each cell-type and make dataframes for each of them to plot
+
+#endothelial cells
+
+pm.all.endo <- lapply(1:20, function(x){
+  intersect(p.m.l$endo[,x], p.m.2.l$endo[,x])#$ does not work in lapply functions
+})
+
+#bcells
+pm.all.bcell.1 <- lapply(1:20, function(x){
+  intersect(p.m.l$bcell[,x], p.m.2.l$bcell.1[,x])#$ does not work in lapply functions
+})
+pm.all.bcell.2 <- lapply(1:20, function(x){
+  intersect(p.m.l$bcell[,x], p.m.2.l$bcell.2[,x])#$ does not work in lapply functions
+})
+
+#tcells
+
+pm.all.tcell.1 <- lapply(1:20, function(x){
+  intersect(p.m.l$tcell[,x], p.m.2.l$tcell.1[,x])#$ does not work in lapply functions
+})
+pm.all.tcell.2 <- lapply(1:20, function(x){
+  intersect(p.m.l$tcell[,x], p.m.2.l$tcell.2[,x])#$ does not work in lapply functions
+})
+
+#kupffer cells
+pm.all.kcell <- lapply(1:20, function(x){
+  intersect(p.m.l$kcell[,x], p.m.2.l$kcell[,x])#$ does not work in lapply functions
+})
+
+#neutrophils
+pm.all.neutro <- lapply(1:20, function(x){
+  intersect(p.m.l$neutro[,x], p.m.2.l$neutro[,x])#$ does not work in lapply functions
+})
+
+inter <- list(pm.all.endo, pm.all.bcell.1, pm.all.bcell.2, pm.all.tcell.1, pm.all.tcell.2, pm.all.kcell, pm.all.neutro)
+
+p.l <- lapply(inter, function(x){
+  data.frame("shared_spots" = sapply(1:20, function(y){
+  (length(as.vector(x[[y]]))/(nrow(p.m))*100)
+}), "percentile" = as.integer(n[1:20]))
+  })
+names(p.l) <- c("pm.all.endo", "pm.all.bcell.1", "pm.all.bcell.2", "pm.all.tcell.1", "pm.all.tcell.2", "pm.all.kcell", "pm.all.neutro")
+#plot the percentile ranks on the x-axis and the percentage of intersecting nspots on the y-axis: 
+
+
+
+p.l <- lapply(p.l, function(x){
+ ggplot(x, aes(percentile, shared_spots)) +
+    geom_point() + 
+    theme_minimal() + 
+    ylab("shared spots [%]")
+})
+
+cowplot::plot_grid(plotlist=p.l, labels = c("Endothelial cells","B cells 1", "B cells 2","T cells 1", "T cells 2", "Kupffer cells", "Neutrophils"), label_size = 8, ncol = 3, label_x = 0.3)
+#get number or intersecting spots for each percentile for both data-sets and create a new data-frame with 1 row (n intersection) and the 20 columns (percentile)
+
+```
+
+```{r, comparison of cluster 5 with single cell data}
+
+#Plot 10 markers with highest significance of cluster 5 in Umaps of sc-datasets
+
+top12.m.5 <- rownames(markers.cca.5)[1:12]
+
+#fibrotic sc-data 
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev2/cca5-markers-fibrotic-dims.png", width = 60, height = 30, units = "cm", res = 600)
+FeaturePlot(se.fibrotic, features = top12.m.5, ncol = 4, label = T, label.size = 6, cols = c("grey","darkolivegreen3", "darkgreen"))
+dev.off()
+
+#Halpern sc-data
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev2/cca5-markers-halpern-dims.png", width = 60, height = 30, units = "cm", res = 600)
+FeaturePlot(se.hp, features = top12.m.5, ncol = 4, label = T, label.size = 6, cols = c("grey","darkolivegreen3", "darkgreen")) 
+dev.off()
+
+```
+
+##Reviewer 3:
+
+###Reviewer comment: 
+
+Approach 1: 
+
+1. Extract gene sets from kegg pathways 
+2. inspect intersections of gene sets of pathways and marker genes of cluster 1 and cluster 2
+3. Calculate ratio by dividing the log2(PP/PC)
+
+
+
+```{r, plot Kegg-pathway zonation}
+
+library(KEGGREST)
+library(EnrichmentBrowser)
+
+mus.kegg.pw <- getGenesets(org = "mmu", db = "kegg", cache = TRUE,gene.id.type = "SYMBOL", return.type = "list")
+
+#extract the gene lists of the respective gene sets 
+
+##Mitochondrial β-oxidation
+#Fatty acid metabolism 
+FAM <- mus.kegg.pw$mmu01212_Fatty_acid_metabolism
+
+#Oxidative phosphorylation
+OXP <- mus.kegg.pw$mmu00190_Oxidative_phosphorylation
+
+#Glucagon signaling pathway
+GSP <- mus.kegg.pw$mmu04922_Glucagon_signaling_pathway
+
+#Glucagon targets from: 
+
+GSP2 <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/glucagon_targets.txt")
+GSP2 <- as.vector(GSP2$V1)
+
+#WNT signaling pathway
+WNT <- mus.kegg.pw$mmu04310_Wnt_signaling_pathway
+
+#WNT2 - wnt targets from PMID 24535843 
+
+WNT2 <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/wnt_targets.txt")
+WNT2 <- as.vector(WNT2$V1)
+
+
+#Glycolysis / Gluconeogenesis
+G_GN <- mus.kegg.pw$`mmu00010_Glycolysis_/_Gluconeogenesis`
+
+##Lipogenesis 
+
+#FAM
+
+#Ether lipid metabolism
+ELM <- mus.kegg.pw$mmu00565_Ether_lipid_metabolism
+
+#Glycerolipid metabolism 
+GLM <- mus.kegg.pw$mmu00561_Glycerolipid_metabolism
+
+#Sphingolipid metabolism 
+SLM <- mus.kegg.pw$mmu00600_Sphingolipid_metabolism
+
+#Primary bile acid biosynthesis - Mus musculus (mouse)
+PBS <- mus.kegg.pw$mmu00120_Primary_bile_acid_biosynthesis
+
+#Fructose and mannose metabolism
+FMM <- mus.kegg.pw$mmu00051_Fructose_and_mannose_metabolism
+
+#Pentose phosphate pathway 
+PPP <- mus.kegg.pw$mmu00030_Pentose_phosphate_pathway
+
+#Alanine, aspartate and glutamate metabolism
+AAGM <- mus.kegg.pw$`mmu00250_Alanine,_aspartate_and_glutamate_metabolism`
+
+#Drug metabolism - cytochrome P450
+DMC <- mus.kegg.pw$mmu00980_Metabolism_of_xenobiotics_by_cytochrome_P450
+
+##Based on published data
+
+#chronic hypoxia targets: PMID 20103700
+CHT <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/hypoxia_targets.txt")
+CHT <- as.vector(CHT$V1)
+
+#Pituitary hormones targets: PMID 19943135 
+PHT <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/hormone_targets.txt")
+PHT <- as.vector(PHT$V1)
+
+#Ha-ras targets: PMID 24535843
+HAR <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/ha-ras_targets.txt")
+HAR <- as.vector(HAR$V1)
+
+```
+
+```{r, create dataframe with ratios}
+##Get a higher number of markers for significant cv and pv markers (with smaller effect-size)
+
+markers.cca.1 <- FindMarkers(se.cca, ident.1 = 1, only.pos = T, logfc.threshold = 0.01)
+markers.cca.1 <- subset(markers.cca.1, p_val_adj < 0.05)
+
+markers.cca.2 <- FindMarkers(se.cca, ident.1 = 2, only.pos = T, logfc.threshold = 0.01)
+markers.cca.2 <- subset(markers.cca.2, p_val_adj < 0.05)
+
+
+kegg.l <- list(FAM, OXP, GSP, WNT, G_GN, ELM, GLM, SLM)
+
+#Fatty acid metabolism ratio
+nFAMpc <- sum(rownames(markers.cca.2) %in% FAM)
+nFAMpp <- sum(rownames(markers.cca.1) %in% FAM)
+FAMr <- log2(nFAMpp/nFAMpc)
+FAMr
+
+#Oxidative phosphorylation ratio 
+nOXPpc <- sum(rownames(markers.cca.2) %in% OXP)
+nOXPpp <- sum(rownames(markers.cca.1) %in% OXP)
+OXPr <- log2(nOXPpp/nOXPpc)
+OXPr
+
+#Glucagon signaling pathway
+nGSPpc <- sum(rownames(markers.cca.2) %in% GSP)
+nGSPpp <- sum(rownames(markers.cca.1) %in% GSP)
+GSPr <- log2(nGSPpp/nGSPpc)
+GSPr
+
+#Glucagon signaling pathway (GSP2)
+nGSP2pc <- sum(rownames(markers.cca.2) %in% GSP2)
+nGSP2pp <- sum(rownames(markers.cca.1) %in% GSP2)
+GSP2r <- log2(nGSP2pp/nGSP2pc)
+GSP2r
+
+#WNT signaling pathway
+nWNTpc <- sum(rownames(markers.cca.2) %in% WNT)
+nWNTpp <- sum(rownames(markers.cca.1) %in% WNT)
+WNTr <- log2(nWNTpp/nWNTpc)
+WNTr
+
+#WNT2
+nWNT2pc <- sum(rownames(markers.cca.2) %in% WNT2)
+nWNT2pp <- sum(rownames(markers.cca.1) %in% WNT2)
+WNT2r <- log2(nWNT2pp/nWNT2pc)
+WNT2r
+
+#Glycolysis/Gluconeogenesis
+nG_GNpc <- sum(rownames(markers.cca.2) %in% G_GN)
+nG_GNpp <- sum(rownames(markers.cca.1) %in% G_GN)
+G_GNr <- log2(nG_GNpp/nG_GNpc)
+G_GNr
+
+#Ether lipid metabolism
+nELMpc <- sum(rownames(markers.cca.2) %in% ELM)
+nELMpp <- sum(rownames(markers.cca.1) %in% ELM)
+ELMr <- log2(nELMpp/nELMpc)
+ELMr
+
+#Glycerolipid metabolism 
+nGLMpc <- sum(rownames(markers.cca.2) %in% GLM)
+nGLMpp <- sum(rownames(markers.cca.1) %in% GLM)
+GLMr <- log2(nGLMpp/nGLMpc)
+GLMr
+
+#Sphingolipid metabolism 
+nSLMpc <- sum(rownames(markers.cca.2) %in% SLM)
+nSLMpp <- sum(rownames(markers.cca.1) %in% SLM)
+SLMr <- log2(nSLMpp/nSLMpc)
+SLMr
+
+#Primary bilde acid biosynthesis
+nPBSpc <- sum(rownames(markers.cca.2) %in% PBS)
+nPBSpp <- sum(rownames(markers.cca.1) %in% PBS)
+PBSr <- log2(nPBSpp/nPBSpc)
+PBSr
+	
+#Fructose and mannose metabolism
+nFMMpc <- sum(rownames(markers.cca.2) %in% FMM)
+nFMMpp <- sum(rownames(markers.cca.1) %in% FMM)
+FMMr <- log2(nFMMpp/nFMMpc)
+FMMr
+
+#Pentose phosphate pathway
+nPPPpc <- sum(rownames(markers.cca.2) %in% PPP)
+nPPPpp <- sum(rownames(markers.cca.1) %in% PPP)
+PPPr <- log2(nPPPpp/nPPPpc)
+PPPr
+
+#Alanine, aspartate and glutamate metabolism
+nAAGMpc <- sum(rownames(markers.cca.2) %in% AAGM)
+nAAGMpp <- sum(rownames(markers.cca.1) %in% AAGM)
+AAGMr <- log2(nAAGMpp/nAAGMpc)
+AAGMr
+
+#Drug metabolism - cytochrome P450
+nDMCpc <- sum(rownames(markers.cca.2) %in% DMC)
+nDMCpp <- sum(rownames(markers.cca.1) %in% DMC)
+DMCr <- log2(nDMCpp/nDMCpc)
+DMCr
+
+#chronic hypoxia targets: PMID 20103700
+nCHTpc <- sum(rownames(markers.cca.2) %in% CHT)
+nCHTpp <- sum(rownames(markers.cca.1) %in% CHT)
+CHTr <- log2(nCHTpp/nCHTpc)
+CHTr
+
+#Pituitary hormones targets: PMID 19943135 
+nPHTpc <- sum(rownames(markers.cca.2) %in% PHT)
+nPHTpp <- sum(rownames(markers.cca.1) %in% PHT)
+PHTr <- log2(nPHTpp/nPHTpc)
+PHTr
+
+#Ha-ras targets: PMID 24535843
+nHARpc <- sum(rownames(markers.cca.2) %in% HAR)
+nHARpp <- sum(rownames(markers.cca.1) %in% HAR)
+HARr <- log2(nHARpp/nHARpc)
+HARr
+
+r.l <- c(FAMr,OXPr,GSPr,GSP2r, WNTr,WNT2r ,G_GNr,GLMr,PBSr,FMMr,PPPr,AAGMr, DMCr, CHTr, PHTr, HARr)
+
+df.r <- data.frame(kegg_pathway = c("Fatty acid metabolism", "Oxidative phosphorylation", "Glucagon signaling pathway", "Glucagon targets (PMID: 29555772)" ,"WNT signaling pathway","WNT targets (PMID: 24214913)", "Glycolysis/Gluconeogenesis", "Glycerolipid metabolism", "Primary bilde acid biosynthesis", "Fructose and mannose metabolism", "Pentose phosphate pathway", "Alanine, aspartate and glutamate metabolism", "Drug metabolism - cytochrome P450", "Chronic hypoxia targets (PMID: 20103700)", "Pituitary hormones targets (PMID: 19943135)", "Ha-ras targets (PMID: 24535843)"), r.l)
+
+df.r <- df.r[order(df.r$r.l),]
+df.r$id <- ifelse(df.r$r.l < 0, paste("central"), paste("portal")) 
+
+#plot the result
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/rev3/kegg-pathway-marker-ratios.png", width = 20, height = 15, units = "cm", res = 600)
+ggplot(df.r, aes(reorder(kegg_pathway, r.l), r.l, fill = id)) + 
+  geom_bar(stat = "identity", color = "black") +
+  xlab(" ") +
+  ylab("log2(PP markers/PC markers)") +
+  coord_flip() + 
+  scale_fill_manual(values = c("darkred", "darkblue")) + 
+  theme(legend.position = "none", axis.text = element_text(size = 12), 
+            axis.title = element_text(size = 12), 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black"))
+dev.off()
+
+```
+
+#Sphingolipid and Ether lipid metabolism (as keggpathways which are part of lipogenesis) have 0 overlap with periportal markersm which results in -INF values when calculating the log2 value - I have removed them for now and will investigate a few more kegg pathwyas that are also mentioned in Halpern et al. 2017 as proposed by Emma + Jan!
+
+#We can also use the gene-lists mentioned my reviewer one and include them in the revision plots (barplots shown in this figure to show "enrichment" of pathways in the portal/central zones)
+: for a list of some of these putative targets see PMID 28166538, Supplementary Table 4), Lgr5 and Cyp2e1, to be strongly affected by the distance to the central vein, classic glucagon targets should be periportal (PMID 29555772)
+
+###Reviewer 3: 
+
+1a) cell count frequency/spot 
+
+As the very first step, the authors are suggested to demonstrate the frequency of cell count in spots, e.g. histogram or density plot. 
+
+
+LL generated performed cell segmentation on the HE images and combined the segmentation with the spot-coordinates, so that we receive a table with the number of cells for each spot. (Using a watershedding approach, which is documented in github)
+
+Now we can 
+1) show the data in a histogram for all spots 
+2) add the data as additional metadata in the seurat object
+2) show violins with the number of cells in each cluster
+3) show correlations between cell-count and RNA count
+
+
+```{r, cell count across spots}
+
+#read cell-count files/ spot
+
+#CN73-C1
+CN73_C1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_C1_cells_per_spot_table.tsv", header = T)
+
+CN73_C1_CpS$spot_cca <- paste("A", CN73_C1_CpS$spot, "1", sep = "_")
+
+hist(CN73_C1_CpS$count, main = paste(""), xlab = "cell count per spot (CN73-C1)")
+
+#CN73-D1
+CN73_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_D1_cells_per_spot_table.tsv", header = T)
+CN73_D1_CpS$spot_cca <- paste("A", CN73_D1_CpS$spot, "2", sep = "_")
+
+#CN73-E2
+CN73_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_E2_cells_per_spot_table.tsv", header = T)
+CN73_E2_CpS$spot_cca <- paste("A", CN73_E2_CpS$spot, "3", sep = "_")
+
+#CN16-D2
+CN16_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_D2_cells_per_spot_table.tsv", header = T)
+CN16_D2_CpS$spot_cca <- paste("B", CN16_D2_CpS$spot, "2", sep = "_")
+
+#CN16-E2
+CN16_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_E2_cells_per_spot_table.tsv", header = T)
+CN16_E2_CpS$spot_cca <- paste("B", CN16_E2_CpS$spot, "4", sep = "_")
+
+
+#CN65-D1
+CN65_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D1_cells_per_spot_table.tsv", header = T)
+CN65_D1_CpS$spot_cca <- paste("C", CN65_D1_CpS$spot, "3", sep = "_")
+
+#CN65-D2
+CN65_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D2_cells_per_spot_table.tsv", header = T)
+CN65_D2_CpS$spot_cca <- paste("C", CN65_D2_CpS$spot, "4", sep = "_")
+
+#CN65-E1
+CN65_E1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_E1_cells_per_spot_table.tsv", header = T)
+CN65_E1_CpS$spot_cca <- paste("C", CN65_E1_CpS$spot, "5", sep = "_")
+
+#Combine all the the tables and look at the histogram
+cca_cells_spot <- dplyr::bind_rows(CN73_C1_CpS, CN73_D1_CpS, CN73_E2_CpS, CN16_D2_CpS, CN16_E2_CpS, CN65_D1_CpS, CN65_D2_CpS, CN65_E1_CpS)
+
+cca_cells_spot$within <- NULL
+cca_cells_spot$spot <- NULL
+
+tail(cca_cells_spot)
+
+hist(cca_cells_spot$count, main = "", xlab = "number of cells per spot", plot = T, xlim = range(0:80))
+
+```
+
+```{r, add cell-count information to the metadata}
+
+#Add the cellcount as a metadata column to the seurat-object
+
+# match the cellcount data with the object data
+
+#spot in cell-count data but not in object data
+c1 <- setdiff(cca_cells_spot$spot_cca, colnames(se.cca))
+#spot in object data but not in cell data 
+c2 <- setdiff(colnames(se.cca), cca_cells_spot$spot_cca)
+
+#filter the count data so in only includes the spots present in the object 
+cca_cells_spot <- subset(cca_cells_spot, cca_cells_spot$spot_cca %in% colnames(se.cca))
+
+#make a df with the spots present in the object but not the cell-count data and add a 0 for the count 
+c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
+cca_cells_spot <- dplyr::bind_rows(cca_cells_spot, c2)
+rownames(cca_cells_spot) <- cca_cells_spot$spot_cca
+cca_cells_spot$spot_cca <- NULL
+#Add the information to the meta-data
+se.cca <- AddMetaData(se.cca, metadata = cca_cells_spot, col.name = "cell_count")
+
+```
+
+We can use the generated cell-count information to generate violinplot of cell count/per cluster. We can also run a correlation analysis between the number of reads/spot and the number of cells/spot. Potentially using a Fisher's exact test?
+
+```{r, violinplot of cells per spot in each cluster}
+
+#Violinplot of cell_count/cluster
+VlnPlot(se.cca,
+        features = "cell_count",
+        cols = cluster.cols)
+
+FeaturePlot(se.cca, features = "cell_count",
+            label = T, 
+            label.size = 12,
+            pt.size = 2,
+            cols = c("darkslategray2", "darkslategray4", "darkslategrey")) + 
+                  theme(axis.ticks = element_blank(), 
+                  axis.text = element_blank(), 
+                  axis.title = element_blank())
+
+gg <- data.frame(nCount = se.cca@meta.data$nCount_RNA,
+                 nCell = se.cca@meta.data$cell_count)
+
+library(ggpubr)
+
+ggplot(gg, aes(nCount, nCell)) +
+  geom_point() +
+  stat_cor(method = "pearson")
+
+```
+
+```{r, check if this relationship changes if we remove the spots without cells}
+
+se.cca.1 <- SubsetSTData(se.cca, spots = rownames(subset(se.cca[[]], cell_count != 0)))
+
+VlnPlot(se.cca.1,
+        features = "cell_count",
+        cols = cluster.cols)
+
+
+
+gg <- data.frame(nCount = se.cca.1@meta.data$nCount_RNA,
+                 nCell = se.cca.1@meta.data$cell_count)
+
+library(ggpubr)
+
+ggplot(gg, aes(nCount, nCell)) +
+  geom_point() +
+  stat_cor(method = "pearson")
+
+```
+
+```{r, show spots with zero cell-count in the data}
+
+FeatureOverlay(se.cca, features = "cell_count", spots = rownames(subset(se.cca[[]], cell_count == 0)))
+
+```
+
+
+To test whether the cell_count is regressed out by  of the cell-count on the clustering and dimensionality reduction we can run the PCA and clustering and Umap projection on the raw data (as opposed to the normalized one) and plot the cell-count in the umap as well as running the violinplots as done in the above.
+
+We add the cell-counts to all of the data (to potentially also look at individual sections)
+
+Start with sample CN73
+
+```{r, look at the distribution of cell counts in normalized vs. the non-normalized data}
+
+#non-normalized objects se1(CN73), se2(CN16), se3(CN65)
+
+#add the cell-count data to the metadata
+
+#se1
+head(se1[[]])
+#read in cellcount data
+
+
+CN73_C1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_C1_cells_per_spot_table.tsv", header = T)
+
+CN73_C1_CpS$spot_cca <- paste(CN73_C1_CpS$spot, "1", sep = "_")
+
+hist(CN73_C1_CpS$count, main = paste(""), xlab = "cell count per spot (CN73-C1)")
+
+#CN73-D1
+CN73_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_D1_cells_per_spot_table.tsv", header = T)
+CN73_D1_CpS$spot_cca <- paste(CN73_D1_CpS$spot, "2", sep = "_")
+
+#CN73-E2
+CN73_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_E2_cells_per_spot_table.tsv", header = T)
+CN73_E2_CpS$spot_cca <- paste(CN73_E2_CpS$spot, "3", sep = "_")
+
+# match the cellcount data with the object data
+
+#Combine all the tables 
+CN73_cells_spot <- dplyr::bind_rows(CN73_C1_CpS, CN73_D1_CpS, CN73_E2_CpS)
+
+CN73_cells_spot$within <- NULL
+CN73_cells_spot$spot <- NULL
+
+tail(CN73_cells_spot)
+
+#spot in cell-count data but not in object data
+c1 <- setdiff(CN73_cells_spot$spot_cca, colnames(se1))
+#spot in object data but not in cell data 
+c2 <- setdiff(colnames(se1), CN73_cells_spot$spot_cca)
+
+#filter the count data so in only includes the spots present in the object 
+CN73_cells_spot <- subset(CN73_cells_spot, CN73_cells_spot$spot_cca %in% colnames(se1))
+
+
+#make a df with the spots present in the object but not the cell-count data and add a 0 for the count 
+c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
+CN73_cells_spot  <- dplyr::bind_rows(CN73_cells_spot , c2)
+rownames(CN73_cells_spot) <- CN73_cells_spot $spot_cca
+CN73_cells_spot$spot_cca <- NULL
+#Add the information to the meta-data
+se1<- AddMetaData(se1, metadata = CN73_cells_spot, col.name = "cell_count")
+
+head(se1[[]])
+
+```
+
+
+```{r, se2}
+
+head(se2[[]])
+#read in cellcount data
+
+#CN16-D2
+CN16_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_D2_cells_per_spot_table.tsv", header = T)
+CN16_D2_CpS$spot_cca <- paste(CN16_D2_CpS$spot, "2", sep = "_")
+CN16_D2_CpS$spot_cca
+#CN16-E2
+CN16_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_E2_cells_per_spot_table.tsv", header = T)
+CN16_E2_CpS$spot_cca <- paste(CN16_E2_CpS$spot, "4", sep = "_")
+CN16_E2_CpS$spot_cca
+# match the cellcount data with the object data
+
+#Combine all the tables 
+CN16_cells_spot <- dplyr::bind_rows(CN16_D2_CpS, CN16_E2_CpS)
+CN16_cells_spot
+
+CN16_cells_spot$within <- NULL
+CN16_cells_spot$spot <- NULL
+
+tail(CN16_cells_spot)
+
+#spot in cell-count data but not in object data
+c1 <- setdiff(CN16_cells_spot$spot_cca, colnames(se2))
+#spot in object data but not in cell data 
+c2 <- setdiff(colnames(se2), CN16_cells_spot$spot_cca)
+
+#filter the count data so in only includes the spots present in the object 
+CN16_cells_spot <- subset(CN16_cells_spot, CN16_cells_spot$spot_cca %in% colnames(se2))
+
+
+#make a df with the spots present in the object but not the cell-count data and add a 0 for the count 
+c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
+CN16_cells_spot  <- dplyr::bind_rows(CN16_cells_spot , c2)
+rownames(CN16_cells_spot) <- CN16_cells_spot $spot_cca
+CN16_cells_spot$spot_cca <- NULL
+#Add the information to the meta-data
+se2<- AddMetaData(se2, metadata = CN16_cells_spot, col.name = "cell_count")
+head(se2[[]])
+
+```
+
+```{r, CN65}
+
+#non-normalized objects se3(CN65), se2(CN16), se3(CN65)
+
+#add the cell-count data to the metadata
+
+#se3
+head(se3[[]])
+
+#read in cellcount data
+CN65_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D1_cells_per_spot_table.tsv", header = T)
+CN65_D1_CpS$spot_cca <- paste(CN65_D1_CpS$spot, "3", sep = "_")
+
+#CN65-D2
+CN65_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D2_cells_per_spot_table.tsv", header = T)
+CN65_D2_CpS$spot_cca <- paste(CN65_D2_CpS$spot, "4", sep = "_")
+
+#CN65-E1
+CN65_E1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_E1_cells_per_spot_table.tsv", header = T)
+CN65_E1_CpS$spot_cca <- paste(CN65_E1_CpS$spot, "5", sep = "_")
+
+# match the cellcount data with the object data
+
+#Combine all the tables 
+CN65_cells_spot <- dplyr::bind_rows(CN65_D1_CpS, CN65_D2_CpS, CN65_E1_CpS)
+
+CN65_cells_spot$within <- NULL
+CN65_cells_spot$spot <- NULL
+
+tail(CN65_cells_spot)
+
+#spot in cell-count data but not in object data
+c1 <- setdiff(CN65_cells_spot$spot_cca, colnames(se3))
+#spot in object data but not in cell data 
+c2 <- setdiff(colnames(se3), CN65_cells_spot$spot_cca)
+
+#filter the count data so in only includes the spots present in the object 
+CN65_cells_spot <- subset(CN65_cells_spot, CN65_cells_spot$spot_cca %in% colnames(se3))
+
+
+#make a df with the spots present in the object but not the cell-count data and add a 0 for the count 
+c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
+CN65_cells_spot  <- dplyr::bind_rows(CN65_cells_spot , c2)
+rownames(CN65_cells_spot) <- CN65_cells_spot $spot_cca
+CN65_cells_spot$spot_cca <- NULL
+#Add the information to the meta-data
+se3<- AddMetaData(se3, metadata = CN65_cells_spot, col.name = "cell_count")
+
+head(se3[[]])
+
+```
+```{r, normalize the data and include the cell count in regressiom}
+
+se1_cc <- SCTransform(se1, vars.to.regress = c("nFeature_RNA", "cell_count", "sample_id"))
+
+se2_cc <- SCTransform(se2, vars.to.regress = c("nFeature_RNA", "cell_count", "sample_id"))
+
+se3_cc <- SCTransform(se3, vars.to.regress = c("nFeature_RNA", "cell_count", "sample_id"))
+
+```
+
+
+```{r, Run CCA on samples}
+
+source("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/scripts/MultiCCA.R", echo = TRUE, keep.source = TRUE)
+
+se.cca_cc <- RunMultiCCA(object.list = list(se1_cc, se2_cc, se3_cc), add.cell.ids = c("A", "B", "C"), num.ccs = 10, verbose = TRUE)
+
+se.cca_cc <- SCTransform(se.cca_cc, vars.to.regress = "sample_id")
+
+se.cca_cc <- RunNMF(se.cca_cc)
+
+dims.use <- c(1,3,4,7,8,9,10) #
+se.cca_cc <- se.cca_cc %>%
+  FindNeighbors(reduction = "cca", dims = dims.use) %>%
+  FindClusters(resolution = 0.3) %>%
+  RunUMAP(reduction = "cca", dims = dims.use, min.dist = 0.1, spread = 0.5)
+
+se.cca_cc <- SetIdent(se.cca_cc, value = "seurat_clusters")
+
+saveRDS(se.cca_cc, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/cca-object_cellcount_norm")
+
+```
+
+
+

@@ -1,0 +1,434 @@
+---
+title: "Liver-ST-Review"
+author: "Franziska Hildebrandt"
+date: "3/4/2021"
+output: html_document
+---
+
+
+##Prepare sc-data for steresoscope analysis 
+
+#1) Sc-data from ["Single-Cell Transcriptomics Uncovers Zonation of Function in the Mesenchyme during Liver Fibrosis"](https://www-sciencedirect-com.ezp.sub.su.se/science/article/pii/S2211124719313245?via%3Dihub) (PMID: 31722201), downloaded from https://doi.org/10.7488/ds/2769 (2021/03/04)
+#2) Sc-data from ["Paired-cell sequencing enables spatial gene expression mapping of liver endothelial cells"](https://www-nature-com.ezp.sub.su.se/articles/nbt.4231) (PMID: 30222169), received 2021/03/05 by Keren B. Halpern
+
+First extract the cell and celltype annotations from the metadata
+
+```{r, extract metadata from the seurat object}
+
+se.fibrotic <- readRDS("~/ST-mLiver/scripts/Sc-mesenshyme-wilson-hendersson/10x_uninjured.rds")
+se.fibrotic <- UpdateSeuratObject(se.fibrotic)
+sc.fibrotic.meta <- se.fibrotic@meta.data[c("lineage")]
+sc.fibrotic.meta$cell <- row.names(sc.fibrotic.meta)
+sc.fibrotic.meta$celltype <- sc.fibrotic.meta$lineage
+sc.fibrotic.meta$lineage <- NULL
+rownames(sc.fibrotic.meta) <- NULL
+head(sc.fibrotic.meta)
+write.table(sc.fibrotic.meta, file = "~/ST-mLiver/scripts/Sc-mesenshyme-wilson-hendersson/sc-fibrotic-meta.tsv",quote = FALSE, sep = "\t", col.names = T, row.names = F)
+
+```
+Secondly, extract the normalized as well as the raw reads from the seurat-object and save it as a new matrix with the correct formatting for stereoscope
+
+```{r, extract expression matrix from the object (raw counts)}
+
+#extract raw data
+se.fibrotic <- UpdateSeuratObject(se.fibrotic)
+sc.count.r <- se.fibrotic@assays$RNA@counts
+sc.count.r <- t(sc.count.r)
+sc.count.r <- as.matrix(sc.count.r)
+sc.count.r[1:100,1:5]
+
+#extract scaled data 
+sc.count.s <- as.matrix(se.fibrotic@assays$RNA@counts)
+head(sc.count.s[1:5, 1:5])
+
+write.table(sc.count.r, file = "~/ST-mLiver/scripts/Sc-mesenshyme-wilson-hendersson/sc-fibrotic-count.tsv",quote = FALSE, sep = "\t", col.names = T, row.names = T)
+
+```
+
+Feed this data to the stereoscope-analysis
+
+```{r, halpern sc-data}
+
+load("~/ST-mLiver/scripts/Seurat_obj.rds")
+mat <- t(as.matrix(Mat@raw.data))
+mat[,"Alb"]
+se.hp <- UpdateSeuratObject(Mat)
+
+head(Mat@meta.data)
+nrow(Mat@meta.data)
+#mat shows cluster-annotion for celltypes
+#This meta-data does not contain the celltype annotations, therefore I will try to get the information from the matlab file sent to me
+##From the matlabdata:
+
+#cluster1 = Endothelial cells
+#cluster2 = T cells
+#cluster3 = Kupffer cells 
+#cluster4 = B cells
+#cluster5 = LCM
+#cluster6 = pDC
+#cluster7 = Neutrophils
+
+#Add celltypes as column in the metadata
+
+celltypes <- c("Endothelial cells", "T cells", "Kupffer cells", "B cells", "LCM", "pDC", "Neutrophils")
+
+names(celltypes) <- levels(se.hp)
+se.hp <- RenameIdents(se.hp, celltypes)
+
+se.hp$celltype <- ifelse(se.hp@meta.data$res.0.5 == 0,"Endothelial cells", 
+                         ifelse(se.hp@meta.data$res.0.5 ==1, "T cells", 
+                                ifelse(se.hp@meta.data$res.0.5 == 2, "Kupffer cells",
+                                       ifelse(se.hp@meta.data$res.0.5 == 3, "B cells", 
+                                              ifelse(se.hp@meta.data$res.0.5 == 4, "LCM", 
+                                                     ifelse(se.hp@meta.data$res.0.5 == 5, "pDC", 
+                                                            ifelse(se.hp@meta.data$res.0.5 == 6, "Neutrophils", "NAN")))))))
+se.hp$cell <- rownames(se.hp[[]])
+head(se.hp[[]])
+
+#make a new dataframe from the cell and celltype annotation and exåprt it for stereoscope
+sc.endothelial.meta <- data.frame(cell = se.hp$cell, celltype = se.hp$celltype, row.names = NULL)
+head(sc.endothelial.meta)
+
+write.table(sc.endothelial.meta.f, file = "~/ST-mLiver/scripts/Halpern/sc-endothelial-filtered-meta.tsv",quote = FALSE, sep = "\t", col.names = T, row.names = F)
+
+##NOTE make sure that the number of cells in the metadata and the count data have to be the same length
+
+#extract raw reads from the seurat-object and save it as a tsv
+sc.count.r <- as.matrix(se.hp@assays$RNA) %>% t()
+head(sc.count.r[1:5,1:5])
+write.table(sc.count.r, file = "~/ST-mLiver/scripts/Halpern/sc-endothelial-count.tsv", sep = "\t", col.names = colnames(sc.count.r), row.names = T)
+
+#This count data is still normalized I will have to look into it but since we should have non-normalized counts for the stereoscope analysis I extracted the count matrix "GSE108561_NPC_umitab.txt" downloaded from Gene expression omnibus: GSE84498 (2021/03/19)
+
+mat1 <- read.csv("~/ST-mLiver/scripts/Halpern/GSE108561_NPC_umitab.csv", row.names=1, sep=";", quote="")
+mat1 <- t(mat1)
+write.table(mat1.f, file = "~/ST-mLiver/scripts/Halpern/sc-endothelial-filtered-raw-count.tsv", sep = "\t", col.names = colnames(mat1), row.names = T)
+
+
+sc.count.h <- read.table("~/ST-mLiver/scripts/Halpern/sc-endothelial-raw-count.tsv", check.names = F)
+
+```
+
+```{r, run DGEA for the cell-type annotations to receive a list of genes for further comparative analysis with NPCs and immune cells}
+
+head(se.hp[[]])
+celltypes
+m.endo <- FindMarkers(se.hp, ident.1 = "Endothelial cells", only.pos = T, logfc.threshold = 1)
+m.endo <- subset(m.endo, p_val_adj < 0.05)
+endo.l <- rownames(m.endo[1:5,])
+endo.all <- rownames(m.endo)
+
+m.t <- FindMarkers(se.hp, ident.1 = "T cells", only.pos = T, logfc.threshold = 1)
+m.t <- subset(m.t, p_val_adj < 0.05)
+m.t <- subset(m.t, rownames(m.t) %in% rownames(se.cca@assays$RNA))
+t.l <- rownames(m.t[1:5,])
+t.all <- rownames(m.t)
+  
+  
+m.kupffer <- FindMarkers(se.hp, ident.1 = "Kupffer cells", only.pos = T, logfc.threshold = 1)
+m.kupffer <- subset(m.kupffer, p_val_adj < 0.05)
+kupffer.l <- rownames(m.kupffer[1:5,])
+kupffer.all <- rownames(m.kupffer)
+
+m.b <- FindMarkers(se.hp, ident.1 = "B cells", only.pos = T, logfc.threshold = 1)
+m.b <- subset(m.b, p_val_adj < 0.05)
+m.b <- subset(m.b, rownames(m.b) %in% rownames(se.cca@assays$RNA))
+b.l <- rownames(m.b[1:5,])
+b.all <- rownames(m.b)
+
+m.lcm <- FindMarkers(se.hp, ident.1 = "LCM", only.pos = T, logfc.threshold = 1)
+m.lcm <- subset(m.lcm, p_val_adj < 0.05)
+m.lcm <- subset(m.lcm, rownames(m.lcm) %in% rownames(se.cca@assays$RNA))
+lcm.l <- rownames(m.lcm[1:5,])
+lcm.all <- rownames(m.lcm)
+
+
+m.pDC <- FindMarkers(se.hp, ident.1 = "pDC", only.pos = T, logfc.threshold = 1)
+m.pDC <- subset(m.pDC, p_val_adj < 0.05)
+m.pDC <- subset(m.pDC, rownames(m.pDC) %in% rownames(se.cca@assays$RNA))
+pDC.l <- rownames(m.pDC[1:5,])
+pDC.all <- rownames(m.pDC)
+
+m.neut <- FindMarkers(se.hp, ident.1 = "Neutrophils", only.pos = T, logfc.threshold = 1)
+m.neut <- subset(m.neut, p_val_adj < 0.05)
+m.neut <- subset(m.neut, rownames(m.neut) %in% rownames(se.cca@assays$RNA))
+neut.l <- rownames(m.neut[1:5,])
+neut.all <- rownames(m.neut)
+
+```
+
+```{r, check for expression of those markers in the tissue}
+#check whether these markers are expressed in the tissue data
+
+ST.FeaturePlot(se.cca, t.l)
+
+```
+
+
+```{r, Export endothelial cell-markers found in the tissue and run them with the expression by distance plots} 
+
+#endothelial cells
+
+write.table(endo.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-endothelial-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(endo.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-endothelial-all.txt", row.names = F, col.names = F, quote = F)
+
+#T cells
+
+write.table(t.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-tcell-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(t.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-tcell_all.txt", row.names = F, col.names = F, quote = F)
+
+#kupffer cells 
+write.table(kupffer.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-kupffer-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(kupffer.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-kupffer_all.txt", row.names = F, col.names = F, quote = F)
+
+#B cells
+
+write.table(b.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-bcell-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(b.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-bcell_all.txt", row.names = F, col.names = F, quote = F)
+
+
+#lcms
+write.table(lcm.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-lcm-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(lcm.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-lcm_all.txt", row.names = F, col.names = F, quote = F)
+
+#pDCs
+write.table(pDC.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-pDC-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(pDC.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-pDC_all.txt", row.names = F, col.names = F, quote = F)
+
+#neutrophils
+
+write.table(neut.l, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-neutro-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(neut.all, "/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/marker-genes/sc-halpern-neutro_all.txt", row.names = F, col.names = F, quote = F)
+
+
+```
+
+##Visualize stereoscope data on tissue
+
+## Visualization of Stereoscope proportion values on spots
+
+The annotated single cell data from the Mouse Cell Atlas (MCA) in this study was integrated with our spatial data using *Stereoscope* (https://www.nature.com/articles/s42003-020-01247-y). Only cell originated from liver tissue were considered (similar as above). To extract a set of highly variable genes (5000 genes) Seurat (v.3.2.2) was used, as described in the materials and methods section of the manuscript. The cell type proportion value output of the analysis can be visualized using STUtility, similar to visualization of read counts in the prvious part of this Rmarkdown script. 
+
+```{r, create objects, results="hide"}
+
+#Use an infotable as input
+infoTable <- read.table("/Users/franziskahildebrandt/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/res/stereoscope-res/2020-10-14-iter-001/infotable-stereoscope.csv", sep=";", header=T, stringsAsFactors = F)[c(1, 2, 3, 4, 5,6,7,8), ]
+#Add smaple IDs to infotable: Becomes important for later normalizations
+infoTable$sample_id <- paste0("sample_", 1:nrow(infoTable))
+
+#Load in without any filters or restrictions
+stsc <- InputFromTable(infotable = infoTable, #Run in console 
+                   platform = "2k", # set the platform
+                   transpose = T)
+#to prevent confusion we will rename the column "nFeature_RNA" to "n_celltypes" and the column "nCount_RNA" to "sum_pp"
+
+names(stsc@meta.data)[2] <- "sum_pp"
+names(stsc@meta.data)[3] <- "n_celltypes"
+head(stsc[[]])
+
+ST.FeaturePlot(stsc, features = "n_celltypes")
+
+```
+
+```{r, Load images in proportion value object, results="hide"}
+
+stsc <- LoadImages(stsc)
+
+#ImagePlot(stsc)
+
+stsc <- MaskImages(stsc)
+
+#stsc<- ManualAlignImages(stsc)
+
+#adjust the resolution for overlaying proportion-values on tissue 
+#stsc <- SwitchResolution(stsc, xdim = 2e3)
+
+```
+
+For a better visual representation of the distribution of the majority of proportion values for each cell type across the tissue, the values were scaled using quantile scaling. For each section and cell type the 95th percentile of the data was considered. The values were re-scaled to the maximum value for each cell type, resulting in values between 0 and 1 within the same function. 
+
+```{r, quantile scaling function}
+
+scaler <- function(x, q = 0.99) {x[x > quantile(x, q)] <- max(x); scales::rescale(x)}
+
+```
+
+```{r, scale each sample}
+
+#Subset objects according to section
+se1 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_1"))))
+se2 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_2"))))
+se3 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_3"))))
+se4 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_4"))))
+se5 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_5"))))
+se6 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_6"))))
+se7 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_7"))))
+se8 <- SubsetSTData(stsc, spots = rownames(subset(stsc[[]], sample_id %in% c("sample_8"))))
+
+
+se.l <- c(se1, se2,se3, se4, se5, se6, se7, se8)
+
+mat.l <- lapply(se.l, function(x){
+  as.data.frame(t(x@assays$RNA@data))
+})
+
+#To correct for outliers in both directions (low and high values) the 95th percentile of the data was considered and adjusted accordingly in the function for scaling of individual sections.
+
+#CN73-C1
+scale2 <- sapply(mat.l[[1]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[1]])
+
+se1[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se1) <- "scaled2"
+
+#CN73-D1
+scale2 <- sapply(mat.l[[2]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[2]])
+
+se2[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se2) <- "scaled2"
+
+#CN73-E2
+
+scale2 <- sapply(mat.l[[3]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[3]])
+
+se3[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se3) <- "scaled2"
+
+#CN16-D2
+
+scale2 <- sapply(mat.l[[4]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[4]])
+
+se4[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se4) <- "scaled2"
+
+#CN16-E2 
+
+scale2 <- sapply(mat.l[[5]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[5]])
+
+se5[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se5) <- "scaled2"
+
+#CN65-D1
+
+scale2 <- sapply(mat.l[[6]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[6]])
+
+se6[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se6) <- "scaled2"
+
+#CN65-D2
+
+scale2 <- sapply(mat.l[[7]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[7]])
+
+se7[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se7) <- "scaled2"
+
+#CN65-E2
+
+scale2 <- sapply(mat.l[[8]], scaler, q =0.95, USE.NAMES = TRUE)
+rownames(scale2) <- rownames(mat.l[[8]])
+
+se8[["scaled2"]]<-CreateAssayObject(counts = as.matrix(t(scale2)))
+
+DefaultAssay(se8) <- "scaled2"
+
+```
+
+After each section was scaled individually the new objects with adjusted default assays for analysis can be combined again and plotted on the spot coordinates or the brightfield tissue images loaded previously if desired. 
+
+```{r, combine scaled objects}
+
+se.l <- list(se2, se3, se4, se5, se6, se7, se8)
+
+se.pp <- MergeSTData(se1, se.l)
+
+ST.FeaturePlot(se.pp, features = "n_celltypes")
+
+all <- rownames(stsc@assays$RNA)
+immuno <- c("Kuppfer cell(Liver)","Macrophage-Chil3 high(Liver)", "Dendritic cell-Cst3 high(Liver)" , "Dendritic cell-Siglech high(Liver)","B cell-Fcmr high(Liver)" , "B cell-Jchain high(Liver)",  "T cell-Gzma high(Liver)" , "T cell-Trbc2 high(Liver)","Neutrophil-Ngp high(Liver)", "Granulocyte(Liver)")
+hep <- c("Hepatocyte-Fabp1 high(Liver)", "Hepatocyte-mt-Nd4 high(Liver)","Pericentral (PC) hepatocytes(Liver)", "Periportal (PP) hepatocyte(Liver)")
+hep.zon <- c("Pericentral (PC) hepatocytes(Liver)", "Periportal (PP) hepatocyte(Liver)")
+lec <- c("Endothelial cell(Liver)", "Epithelial cell(Liver)","Stromal cell(Liver)")
+ery <- c("Erythroblast-Hbb-bs high(Liver)", "Erythroblast-Hbb-bt high(Liver)")
+
+ST.FeaturePlot(se.pp, features = all , indices = 1, palette = "plasma")
+
+
+#Visualize proportions of a cell type list
+ST.FeaturePlot(se.pp, features = hep, ncols.features = 4, pt.size = 1.5, pt.alpha = 1, cols = scico(8,palette = "buda"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.2, "cm")), sample.label = F)
+
+#Visualize proportions of only one cell type
+
+
+ST.FeaturePlot(se.pp, features = "Pericentral (PC) hepatocytes(Liver)" ,indices = 2, pt.size = 1.2, pt.alpha = 0.8, cols = brewer.pal(9, "Reds"),custom.theme = theme(legend.title = element_blank(), plot.title = element_text(size = 8), legend.position = "right", legend.key.size = unit(0.3, "cm")), sample.label = F)
+
+
+```
+
+
+```{r, curate gene-lists for Wnt-targets}
+
+wnt_targets <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/gene-lists/wnt_targets.txt", quote="", comment.char="")
+
+wnt_targets <- subset(wnt_targets, wnt_targets$V1 %in% rownames(se.cca))
+
+write.table(as.vector(wnt_targets$V1), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/wnt_targets.txt", row.names = F, col.names = F, quote = F)
+
+
+hormone_targets <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/gene-lists/hormone_targets.txt", quote="", comment.char="")
+
+hormone_targets <- subset(hormone_targets, hormone_targets$V1 %in% rownames(se.cca))
+
+write.table(as.vector(hormone_targets$V1), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/hormone_targets.txt", row.names = F, col.names = F, quote = F)
+
+
+hypoxia_targets <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/gene-lists/hypoxia_targets.txt", quote="", comment.char="")
+
+hypoxia_targets <- subset(hypoxia_targets, hypoxia_targets$V1 %in% rownames(se.cca))
+
+write.table(as.vector(hypoxia_targets$V1), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/hypoxia_targets.txt", row.names = F, col.names = F, quote = F)
+
+
+pp_glucagon_targets <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/pp_glucagon_targets.txt", quote="", comment.char="")
+
+pp_glucagon_targets <- subset(pp_glucagon_targets, pp_glucagon_targets$V1 %in% rownames(se.cca))
+
+write.table(as.vector(pp_glucagon_targets$V1), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/pp_glucagon_targets.txt", row.names = F, col.names = F, quote = F)
+
+
+pc_glucagon_targets <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/gene-lists/pc_glucagon_targets.txt", quote="", comment.char="")
+
+pc_glucagon_targets <- subset(pc_glucagon_targets, pc_glucagon_targets$V1 %in% rownames(se.cca))
+
+write.table(as.vector(pc_glucagon_targets$V1), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/pc_glucagon_targets.txt", row.names = F, col.names = F, quote = F)
+
+
+ha_ras_targets <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/gene-lists/ha-ras_targets.txt", quote="", comment.char="")
+
+ha_ras_targets <- subset(ha_ras_targets, ha_ras_targets$V1 %in% rownames(se.cca))
+
+write.table(as.vector(ha_ras_targets$V1), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/data/gene-lists/wnt/ha_ras_targets.txt", row.names = F, col.names = F, quote = F)
+
+
+```
+
+

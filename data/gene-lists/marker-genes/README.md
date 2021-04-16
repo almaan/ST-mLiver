@@ -4,3 +4,8 @@
 * ST-portal-markers.csv - portal vein markers (cluster 1) of ST data using the `Liver-ST` script
 * sc-central-markers.csv - central hepatocyte markers of MCA single cell data data using the `Liver-ST` script
 * sc-portal-markers.csv - portal hepatocyte markers of MCA single cell data data using the `Liver-ST` script
+* markers_cluster5.txt - vector of marker genes of cluster 5 generated using the `Liver-ST` script
+* markers_cluster5.txt - vector of overlapping marker genes of `markers_cluster5.txt` and `sc-halpern/lcms/lcm_all.txt` from DGEA performed in `scripts/review-ST-Liver-scAnalysis.Rmd` 
+* sc-halpern/ - folder containing short lists and complete lists of DEG for annotated celltypes retrieved using `scripts/review-ST-Liver-scAnalysis.Rmd` to generate expression by distance plots for revision process
+* st-lec/ - folder containing short and complete lists of marker genes for the annotated celltypes `endo` for endothelial cells, `kupffer` for kupffer cells and `lcm` for liver capsular macrophages extracted using `scripts/review-ST-Liver-scAnalysis.Rmd` which are also present in our spatial data
+* immune_short.txt - shortlist of genes with the GO-term  `immune system process` present in spatial data

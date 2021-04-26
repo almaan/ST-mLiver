@@ -1594,9 +1594,9 @@ cca_cells_spot$spot <- NULL
 head(cca_cells_spot)
 tail(cca_cells_spot)
 
-#png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_histgram.png", width = 20, height = 12, units = "cm", res = 600)
-print(hist(cca_cells_spot$count, main = "", xlab = "ncell/spot", plot = T, xlim = range(0:150), ylim = range(0:1000)))
-#dev.off()
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_histgram.png", width = 20, height = 12, units = "cm", res = 600)
+print(hist(cca_cells_spot$count, main = "", xlab = "ncell/spot", plot = T, xlim = range(0:150), ylim = range(0:1500)))
+dev.off()
 
 
 
@@ -1650,16 +1650,18 @@ print(FeaturePlot(se.cca, features = "cell_count",
                   title = element_blank()))
 dev.off()
 
+library(ggpubr)
 
+se1 <- SubsetSTData(se.cca, spots = rownames(subset(se.cca[[]], sample_id %in% c(8))))
 
 gg <- data.frame(nCount = se.cca@meta.data$nCount_RNA,
                  nCell = se.cca@meta.data$cell_count)
 
-library(ggpubr)
-
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cellcount_cor/cell_count_RNA_count_cor_CN65_E1.png", width = 4200, height = 3000, res = 600)
 ggplot(gg, aes(nCount, nCell)) +
   geom_point() +
   stat_cor(method = "pearson")
+dev.off()
 
 ```
 
@@ -1760,6 +1762,7 @@ c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
 CN73_cells_spot  <- dplyr::bind_rows(CN73_cells_spot , c2)
 rownames(CN73_cells_spot) <- CN73_cells_spot $spot_cca
 CN73_cells_spot$spot_cca <- NULL
+write.table(CN73_cells_spot, "~/Desktop/CN73_cells_spot.tsv", quote = F, row.names = rownames(CN73_cells_spot))
 #Add the information to the meta-data
 se1<- AddMetaData(se1, metadata = CN73_cells_spot, col.name = "cell_count")
 
@@ -1806,6 +1809,9 @@ c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
 CN16_cells_spot  <- dplyr::bind_rows(CN16_cells_spot , c2)
 rownames(CN16_cells_spot) <- CN16_cells_spot $spot_cca
 CN16_cells_spot$spot_cca <- NULL
+
+write.table(CN16_cells_spot, "~/Desktop/CN16_cells_spot.tsv", quote = F, row.names = rownames(CN16_cells_spot))
+
 #Add the information to the meta-data
 se2<- AddMetaData(se2, metadata = CN16_cells_spot, col.name = "cell_count")
 head(se2[[]])
@@ -1857,6 +1863,7 @@ c2 <- data.frame("count" = as.integer(paste(0)), "spot_cca" = c2)
 CN65_cells_spot  <- dplyr::bind_rows(CN65_cells_spot , c2)
 rownames(CN65_cells_spot) <- CN65_cells_spot $spot_cca
 CN65_cells_spot$spot_cca <- NULL
+write.table(CN65_cells_spot, "~/Desktop/CN65_cells_spot.tsv", quote = F, row.names = rownames(CN65_cells_spot))
 #Add the information to the meta-data
 se3<- AddMetaData(se3, metadata = CN65_cells_spot, col.name = "cell_count")
 
@@ -1874,7 +1881,6 @@ se3_cc <- SCTransform(se3, vars.to.regress = c("nFeature_RNA", "cell_count", "sa
 
 ```
 
-
 ```{r, Run CCA on samples}
 
 source("~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ankarliver/scripts/MultiCCA.R", echo = TRUE, keep.source = TRUE)
@@ -1886,12 +1892,12 @@ se.cca_cc <- SCTransform(se.cca_cc, vars.to.regress = "sample_id")
 se.cca_cc <- RunNMF(se.cca_cc)
 
 dims.use <- c(1,3,4,7,8,9,10) #
-se.cca_cc <- se.cca_cc %>%
+se.cca <- se.cca %>%
   FindNeighbors(reduction = "cca", dims = dims.use) %>%
   FindClusters(resolution = 0.3) %>%
   RunUMAP(reduction = "cca", dims = dims.use, min.dist = 0.1, spread = 0.5)
 
-se.cca_cc <- SetIdent(se.cca_cc, value = "seurat_clusters")
+se.cca <- SetIdent(se.cca, value = "seurat_clusters")
 
 saveRDS(se.cca_cc, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/cca-object_cellcount_norm")
 
@@ -1900,11 +1906,25 @@ saveRDS(se.cca_cc, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/s
 
 ```{r, plot both dimensionality reductions and compare}
 
-se.cca_c <- readRDS("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/cca-object_cellcount_norm")
+se.cca_cc <- readRDS("~/Desktop/se_cca_cc_object")
+new.cluster.ids <- c("portal_cluster", "0", "central_cluster", "immune_cluster", "4", "cluster_5")
+
+names(new.cluster.ids) <- levels(se.cca_cc)
+
+se.cca_cc <- RenameIdents(se.cca_cc, new.cluster.ids)
 
 DimPlot(se.cca, pt.size = 1 , label = T, cols = cluster.cols)
 
-DimPlot(se.cca_c, pt.size = 1 , label = T, cols = cluster.cols)
+cluster.cols.cc = c("blue3","yellow3", "red3", "darkorange1","green4", "turquoise3")
+
+DimPlot(se.cca_cc, pt.size = 1 , label = T, cols = cluster.cols.cc)
+
+ST.FeaturePlot(se.cca_cc, features = "seurat_clusters", indices = 3, cols = cluster.cols.cc)
+
+ST.FeaturePlot(se.cca, features = "seurat_clusters", indices = 3, cols = cluster.cols)
+
+
+FeatureOverlay(se.cca_cc, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca_cc[[]], seurat_clusters == c(1,2))),sampleids = 2, pt.alpha = 0.8, pt.size = 2, cols = c("blue3", "red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F)
 
 ```
 
@@ -1938,12 +1958,27 @@ dev.off()
 
 
 #extract the seurat clusters from the cell-count normalized data and append the cluster annotations to the original (non-cellcount normalized data)
-
 cc_clusters <- se.cca_cc[["seurat_clusters"]]
 
 se.cca$cc_seurat_clusters <- cc_clusters
+#get new and old labels
+convert_old <- c("0" = "cluster 0", "1" = "portal cluster","2" = "central cluster", "3" = "heme cluster", "4" = "immunity cluster", "5" = "cluster 5")
+convert_new <- c("0" = "portal cluster", "1" = "cluster 0" ,"2" = "central cluster", "3" = "heme cluster", "4" = "cluster 5", "5" = "immunity cluster")
 
-table(se.cca@meta.data[, c("seurat_clusters", "cc_seurat_clusters")])
 
+se.cca$label_old <- convert_old[as.character(se.cca$seurat_clusters)]
+se.cca$label_new <- convert_new[as.character(se.cca$cc_seurat_clusters)]
+
+
+tab <- table(se.cca@meta.data[, c("seurat_clusters", "cc_seurat_clusters")])
+tab <- table(se.cca@meta.data[, c("label_old", "label_new")])
+
+write.table(tab, "~/Desktop/table1.tsv", quote = F, sep = "\t")
+
+tab
+
+df <- data.frame("original_norm_clusters" = se.cca$seurat_clusters, "cellcount_norm_clusters" = se.cca$cc_seurat_clusters, "annotation_original" = se.cca$label_old, "annotation_cellcount" = se.cca$label_new)
+
+write.table(df, "~/Desktop/clusters_LL.tsv", sep = "\t" , row.names = rownames(df), quote = F)
 
 ```

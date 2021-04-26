@@ -112,19 +112,19 @@ n.count.all <- sapply(se.sub.l, function(a){
 #get counts for Hamp
 
 n.count.Hamp <- sapply(se.sub.l, function(b){
-  sum(b@assays$SCT@counts[rownames(b@assays$RNA@counts) == "Hamp"])
+  sum(b@assays$SCT@counts[rownames(b@assays$SCT@counts) == "Hamp"])
 })
 
 #get counts for Hamp2
 
 n.count.Hamp2 <- sapply(se.sub.l, function(b){
-  sum(b@assays$SCT@counts[rownames(b@assays$RNA@counts) == "Hamp2"])
+  sum(b@assays$SCT@counts[rownames(b@assays$SCT@counts) == "Hamp2"])
 })
 
 #get counts for Igfbp2
 
 n.count.Igfbp2 <- sapply(se.sub.l, function(b){
-  sum(b@assays$SCT@counts[rownames(b@assays$RNA@counts) == "Igfbp2"])
+  sum(b@assays$SCT@counts[rownames(b@assays$SCT@counts) == "Igfbp2"])
 })
 
 #Make dataframe from all the values
@@ -141,7 +141,7 @@ df
 
 #Visualize in a barplot (with the value on the y-axis and the cluster on the x-axis (For each gene)
 
-p.hamp <- ggplot(df, aes(rownames(df), norm.n.Hamp, fill = rownames(df))) + 
+p.hamp <- ggplot(df, aes(rownames(df), log10(n.count.Hamp), fill = rownames(df))) + 
       geom_bar(stat = "identity") + 
       scale_fill_manual(values = cluster.cols) + 
       scale_x_discrete(labels = c("0", "1", "2", "3", "4", "5"), name = "cluster") + 
@@ -153,7 +153,7 @@ p.hamp <- ggplot(df, aes(rownames(df), norm.n.Hamp, fill = rownames(df))) +
             panel.background = element_blank(), 
             axis.line = element_line(colour = "black"))
 
-p.hamp2 <- ggplot(df, aes(rownames(df), norm.n.Hamp2, fill = rownames(df))) + 
+p.hamp2 <- ggplot(df, aes(rownames(df), log10(n.count.Hamp2), fill = rownames(df))) + 
       geom_bar(stat = "identity") + 
       scale_fill_manual(values = cluster.cols) + 
       scale_x_discrete(labels = c("0", "1", "2", "3", "4", "5"), name = "cluster") + 
@@ -166,7 +166,7 @@ p.hamp2 <- ggplot(df, aes(rownames(df), norm.n.Hamp2, fill = rownames(df))) +
             axis.line = element_line(colour = "black"))
 
 
-p.igfbp2 <- ggplot(df, aes(rownames(df), norm.n.Igfbp2, fill = rownames(df))) + 
+p.igfbp2 <- ggplot(df, aes(rownames(df), log10(n.count.Igfbp2), fill = rownames(df))) + 
       geom_bar(stat = "identity") + 
       scale_fill_manual(values = cluster.cols) + 
       scale_x_discrete(labels = c("0", "1", "2", "3", "4", "5"), name = "cluster") + 
@@ -190,6 +190,32 @@ png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/n
 print(p.igfbp2)
 dev.off()
 
+
+```
+```{r, visulize individual genes in violin plots}
+#compare to violinplot depiction: 
+
+v.hamp <- VlnPlot(se.cca,
+        features = "Hamp",
+        cols = cluster.cols)
+v.hamp2 <- VlnPlot(se.cca,
+        features = "Hamp2",
+        cols = cluster.cols)
+v.igfbp2 <- VlnPlot(se.cca,
+        features = "Igfbp2",
+        cols = cluster.cols)
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev1/cluster0_validation/ncount_hamp_violin.png", width = 12, height = 8, units = "cm", res = 600)
+print(v.hamp)
+dev.off()
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev1/cluster0_validation/ncount_hamp2_violin.png", width = 12, height = 8, units = "cm", res = 600)
+v.hamp2
+dev.off()
+
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev1/cluster0_validation/ncount_igfbp2_violin.png", width = 12, height = 8, units = "cm", res = 600)
+v.igfbp2
+dev.off()
 
 ```
 
@@ -1513,56 +1539,65 @@ Now we can
 #read cell-count files/ spot
 
 #CN73-C1
-CN73_C1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_C1_cells_per_spot_table.tsv", header = T)
+CN73_C1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN73_C1/cells_per_spot_table.tsv", header = T)
 
-CN73_C1_CpS$spot_cca <- paste("A", CN73_C1_CpS$spot, "1", sep = "_")
+CN73_C1_CpS$spot_cca <- paste("A",CN73_C1_CpS$spot, "1", sep = "_")
 
 hist(CN73_C1_CpS$count, main = paste(""), xlab = "cell count per spot (CN73-C1)")
 
 #CN73-D1
-CN73_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_D1_cells_per_spot_table.tsv", header = T)
-CN73_D1_CpS$spot_cca <- paste("A", CN73_D1_CpS$spot, "2", sep = "_")
+CN73_D1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN73_D1/cells_per_spot_table.tsv", header = T)
+CN73_D1_CpS$spot_cca <- paste("A",CN73_D1_CpS$spot, "2", sep = "_")
 
 #CN73-E2
-CN73_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_E2_cells_per_spot_table.tsv", header = T)
-CN73_E2_CpS$spot_cca <- paste("A", CN73_E2_CpS$spot, "3", sep = "_")
+CN73_E2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN73_E2/cells_per_spot_table.tsv", header = T)
+CN73_E2_CpS$spot_cca <- paste("A",CN73_E2_CpS$spot, "3", sep = "_")
+
+
+#cells_spot_73 <- dplyr::bind_rows(CN73_C1_CpS, CN73_D1_CpS, CN73_E2_CpS)
+#cells_spot_73$within <- NULL
+#cells_spot_73$spot <- NULL
 
 #CN16-D2
-CN16_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_D2_cells_per_spot_table.tsv", header = T)
-CN16_D2_CpS$spot_cca <- paste("B", CN16_D2_CpS$spot, "2", sep = "_")
+CN16_D2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN16_D2/cells_per_spot_table.tsv", header = T)
+CN16_D2_CpS$spot_cca <- paste("B",CN16_D2_CpS$spot, "2", sep = "_")
 
 #CN16-E2
-CN16_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_E2_cells_per_spot_table.tsv", header = T)
-CN16_E2_CpS$spot_cca <- paste("B", CN16_E2_CpS$spot, "4", sep = "_")
+CN16_E2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN16_E2/cells_per_spot_table.tsv", header = T)
+CN16_E2_CpS$spot_cca <- paste("B",CN16_E2_CpS$spot, "4", sep = "_")
 
+#cells_spot_16 <- dplyr::bind_rows(CN16_D2_CpS, CN16_E2_CpS)
+#cells_spot_16$within <- NULL
+#cells_spot_16$spot <- NULL
 
 #CN65-D1
-CN65_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D1_cells_per_spot_table.tsv", header = T)
+CN65_D1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN65_D1/cells_per_spot_table.tsv", header = T)
 CN65_D1_CpS$spot_cca <- paste("C", CN65_D1_CpS$spot, "3", sep = "_")
 
 #CN65-D2
-CN65_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D2_cells_per_spot_table.tsv", header = T)
+CN65_D2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN65_D2/cells_per_spot_table.tsv", header = T)
 CN65_D2_CpS$spot_cca <- paste("C", CN65_D2_CpS$spot, "4", sep = "_")
 
 #CN65-E1
-CN65_E1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_E1_cells_per_spot_table.tsv", header = T)
+CN65_E1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN65_E1/cells_per_spot_table.tsv", header = T)
 CN65_E1_CpS$spot_cca <- paste("C", CN65_E1_CpS$spot, "5", sep = "_")
+
+#cells_spot_65 <- dplyr::bind_rows(CN65_D1_CpS, CN65_D2_CpS, CN65_E1_CpS)
+#cells_spot_65$within <- NULL
+#cells_spot_65$spot <- NULL
 
 #Combine all the the tables and look at the histogram
 cca_cells_spot <- dplyr::bind_rows(CN73_C1_CpS, CN73_D1_CpS, CN73_E2_CpS, CN16_D2_CpS, CN16_E2_CpS, CN65_D1_CpS, CN65_D2_CpS, CN65_E1_CpS)
 
 cca_cells_spot$within <- NULL
 cca_cells_spot$spot <- NULL
-
+head(cca_cells_spot)
 tail(cca_cells_spot)
 
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_histgram.png", width = 20, height = 12, units = "cm", res = 600)
-print(hist(cca_cells_spot$count, main = "", xlab = "ncell/spot", plot = T, xlim = range(0:80), ylim = range(0:1000)))
-dev.off()
+#png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_histgram.png", width = 20, height = 12, units = "cm", res = 600)
+print(hist(cca_cells_spot$count, main = "", xlab = "ncell/spot", plot = T, xlim = range(0:150), ylim = range(0:1000)))
+#dev.off()
 
-#Run shapiro-wilk-normality test to test for normal distribution of cell count across spots: 
-
-shapiro.test(cca_cells_spot$count)
 
 
 ```
@@ -1628,30 +1663,44 @@ ggplot(gg, aes(nCount, nCell)) +
 
 ```
 
-```{r, check if this relationship changes if we remove the spots without cells}
+```{r, run correlation analysis plot with cell_count and unfiltered nCount of data}
 
-se.cca.1 <- SubsetSTData(se.cca, spots = rownames(subset(se.cca[[]], cell_count != 0)))
+#get unfiltered count data and spot coordinates for each section 
 
-VlnPlot(se.cca.1,
-        features = "cell_count",
-        cols = cluster.cols)
+df.1 <- data.frame(spot_crd = rownames(se1[[]]), nCount_RNA = se1@meta.data$nCount_RNA)
+df.2 <- data.frame(spot_crd = rownames(se2[[]]), nCount_RNA = se2@meta.data$nCount_RNA)
+df.3 <- data.frame(spot_crd = rownames(se3[[]]), nCount_RNA = se3@meta.data$nCount_RNA)
 
+head(df.1)
 
+colnames(cells_spot_73) <- c("nCell", "spot_crd")
 
-gg <- data.frame(nCount = se.cca.1@meta.data$nCount_RNA,
-                 nCell = se.cca.1@meta.data$cell_count)
+colnames(cells_spot_16) <- c("nCell", "spot_crd")
+  
+colnames(cells_spot_65) <- c("nCell", "spot_crd")
+
+df.1 <- left_join(df.1, cells_spot_73, by = "spot_crd")
+df.2 <- left_join(df.2, cells_spot_16, by = "spot_crd")
+df.3 <- left_join(df.3, cells_spot_65, by = "spot_crd")
+
+allRNA_cell <- dplyr::bind_rows(df.1, df.2, df.3)
 
 library(ggpubr)
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_RNA_count_cor.png", width = 4200, height = 3000, res = 600)
-print(ggplot(gg, aes(nCount, nCell)) +
+#png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_RNA_count_cor.png", width = 4200, height = 3000, res = 600)
+print(ggplot(allRNA_cell, aes((nCount_RNA),(nCell))) +
   geom_point() +
   stat_cor(method = "pearson"))
-dev.off()
+#dev.off()
+
 ```
 
 ```{r, show spots with zero cell-count in the data}
 
-FeatureOverlay(se.cca, features = "cell_count", spots = rownames(subset(se.cca[[]], cell_count == 0)))
+FeatureOverlay(se.cca, features = "cell_count", spots = rownames(subset(se.cca[[]], cell_count == 0)), sampleids = 8)
+
+ST.FeaturePlot(se.cca, features = "cell_count",indices = c(6:8), ncol = 3)
+
+ImagePlot(se.cca)
 
 ```
 
@@ -1673,18 +1722,18 @@ head(se1[[]])
 #read in cellcount data
 
 
-CN73_C1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_C1_cells_per_spot_table.tsv", header = T)
+CN73_C1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN73_C1/cells_per_spot_table.tsv", header = T)
 
 CN73_C1_CpS$spot_cca <- paste(CN73_C1_CpS$spot, "1", sep = "_")
 
 hist(CN73_C1_CpS$count, main = paste(""), xlab = "cell count per spot (CN73-C1)")
 
 #CN73-D1
-CN73_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_D1_cells_per_spot_table.tsv", header = T)
+CN73_D1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN73_D1/cells_per_spot_table.tsv", header = T)
 CN73_D1_CpS$spot_cca <- paste(CN73_D1_CpS$spot, "2", sep = "_")
 
 #CN73-E2
-CN73_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN73_E2_cells_per_spot_table.tsv", header = T)
+CN73_E2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN73_E2/cells_per_spot_table.tsv", header = T)
 CN73_E2_CpS$spot_cca <- paste(CN73_E2_CpS$spot, "3", sep = "_")
 
 # match the cellcount data with the object data
@@ -1725,11 +1774,11 @@ head(se2[[]])
 #read in cellcount data
 
 #CN16-D2
-CN16_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_D2_cells_per_spot_table.tsv", header = T)
+CN16_D2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN16_D2/cells_per_spot_table.tsv", header = T)
 CN16_D2_CpS$spot_cca <- paste(CN16_D2_CpS$spot, "2", sep = "_")
 CN16_D2_CpS$spot_cca
 #CN16-E2
-CN16_E2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN16_E2_cells_per_spot_table.tsv", header = T)
+CN16_E2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN16_E2/cells_per_spot_table.tsv", header = T)
 CN16_E2_CpS$spot_cca <- paste(CN16_E2_CpS$spot, "4", sep = "_")
 CN16_E2_CpS$spot_cca
 # match the cellcount data with the object data
@@ -1773,15 +1822,15 @@ head(se2[[]])
 head(se3[[]])
 
 #read in cellcount data
-CN65_D1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D1_cells_per_spot_table.tsv", header = T)
+CN65_D1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN65_D1/cells_per_spot_table.tsv", header = T)
 CN65_D1_CpS$spot_cca <- paste(CN65_D1_CpS$spot, "3", sep = "_")
 
 #CN65-D2
-CN65_D2_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_D2_cells_per_spot_table.tsv", header = T)
+CN65_D2_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN65_D2/cells_per_spot_table.tsv", header = T)
 CN65_D2_CpS$spot_cca <- paste(CN65_D2_CpS$spot, "4", sep = "_")
 
 #CN65-E1
-CN65_E1_CpS <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/Archive/cells_per_spot/CN65_E1_cells_per_spot_table.tsv", header = T)
+CN65_E1_CpS <- read.table("~/Box/Hildebrandt-Ankarklev-Liver/liver_cell_segmentation/results/CN65_E1/cells_per_spot_table.tsv", header = T)
 CN65_E1_CpS$spot_cca <- paste(CN65_E1_CpS$spot, "5", sep = "_")
 
 # match the cellcount data with the object data
@@ -1814,6 +1863,7 @@ se3<- AddMetaData(se3, metadata = CN65_cells_spot, col.name = "cell_count")
 head(se3[[]])
 
 ```
+
 ```{r, normalize the data and include the cell count in regressiom}
 
 se1_cc <- SCTransform(se1, vars.to.regress = c("nFeature_RNA", "cell_count", "sample_id"))
@@ -1880,5 +1930,20 @@ write.table(crd.2, file = "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_
 png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev2/markers-cca-5.png", width = 8400, height = 6000, res = 600)
 gt(markers.cca.5, rownames_to_stub = TRUE)
 dev.off()
+
+```
+
+
+```{r, compare the cluster-annotations between datasets}
+
+
+#extract the seurat clusters from the cell-count normalized data and append the cluster annotations to the original (non-cellcount normalized data)
+
+cc_clusters <- se.cca_cc[["seurat_clusters"]]
+
+se.cca$cc_seurat_clusters <- cc_clusters
+
+table(se.cca@meta.data[, c("seurat_clusters", "cc_seurat_clusters")])
+
 
 ```

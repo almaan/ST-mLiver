@@ -1632,14 +1632,14 @@ We can use the generated cell-count information to generate violinplot of cell c
 
 #Violinplot of cell_count/cluster
 
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_cluster_violin.png",  width = 3000, height = 1500, res = 300)
-print(VlnPlot(se.cca,
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_cluster_violin_cc_norm.png",  width = 3000, height = 1500, res = 300)
+print(VlnPlot(se.cca_cc,
         features = "cell_count",
-        cols = cluster.cols))
+        cols = cluster.cols.cc))
 dev.off()
 
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_cluster_umap.png", width = 8400, height = 6000, res = 600)
-print(FeaturePlot(se.cca, features = "cell_count",
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cell_count_cluster_umap_cc_norm.png", width = 8400, height = 6000, res = 600)
+print(FeaturePlot(se.cca_cc, features = "cell_count",
             label = T, 
             label.size = 12,
             pt.size = 2,
@@ -1652,12 +1652,12 @@ dev.off()
 
 library(ggpubr)
 
-se1 <- SubsetSTData(se.cca, spots = rownames(subset(se.cca[[]], sample_id %in% c(8))))
+se1 <- SubsetSTData(se.cca_cc, spots = rownames(subset(se.cca[[]], sample_id %in% c(8))))
 
-gg <- data.frame(nCount = se.cca@meta.data$nCount_RNA,
-                 nCell = se.cca@meta.data$cell_count)
+gg <- data.frame(nCount = se.cca_cc@meta.data$nCount_RNA,
+                 nCell = se.cca_cc@meta.data$cell_count)
 
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cellcount_cor/cell_count_RNA_count_cor_CN65_E1.png", width = 4200, height = 3000, res = 600)
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cellcount_cor_cc_norm/cell_count_RNA_count_cor_cc_CN65_E1.png", width = 4200, height = 3000, res = 600)
 ggplot(gg, aes(nCount, nCell)) +
   geom_point() +
   stat_cor(method = "pearson")

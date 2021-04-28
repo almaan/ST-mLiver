@@ -6,8 +6,15 @@ from scipy.spatial.distance import cdist
 from functools import reduce
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap as colormap
+
+from statsmodels.regression.linear_model import OLS
+from statsmodels.regression.linear_model import RegressionResultsWrapper as regres
+
+
 
 from typing import *
+
 
 
 def get_figure(n_elements : int,
@@ -434,3 +441,91 @@ def visualize_prediction_result(results : pd.DataFrame,
     ax.legend()
 
     return (fig,ax)
+
+
+
+
+def expression_fields(xs : np.ndarray,
+                    ys : np.ndarray,
+                    results : regres, 
+                    n_ticks : int = 400,
+                    )->Tuple[np.ndarray,np.ndarray,Tuple[int,int]]:
+
+    mx = np.max((xs[:,1]))
+    mn = np.min(xs[:,1])
+    xx = np.linspace(mn,mx,n_ticks)
+    mx = np.max((xs[:,2]))
+    mn = np.min(xs[:,2])
+    yy = np.linspace(mn,mx,n_ticks)
+    X,Y = np.meshgrid(xx,yy)
+    shape = X.shape
+    Xf = X.flatten()
+    Yf = Y.flatten()
+    XY = np.hstack((np.ones((Xf.shape[0],1)),Xf[:,np.newaxis],Yf[:,np.newaxis]))
+    Z = results.predict(XY)
+
+
+    return (XY[:,1::],Z,shape)
+
+
+def plot_field(ax : plt.Axes,
+            Z : np.ndarray,
+            XY : np.ndarray,
+            cmap : colormap = plt.cm.magma,
+            fontsize = 20,
+            x_feature : str = "central",
+            y_feature : str = "portal",
+            )->None:
+
+    im = ax.imshow(Z,cmap = cmap)
+    ax.set_xlabel("Distance to central vein",fontsize = fontsize)
+    ax.set_ylabel("Distance to portal vein", fontsize = fontsize)
+    ax.set_xticks(np.linspace(0,Z.shape[0],10).round())
+    ax.set_yticks(np.linspace(0,Z.shape[1],10).round())
+
+    ax.set_xticklabels(np.linspace(XY[:,0].min(),XY[:,0].max(),10).round(),rotation = 90)
+    ax.set_yticklabels(np.linspace(XY[:,1].min(),XY[:,1].max(),10).round())
+    ax.invert_yaxis()
+
+    plt.colorbar(im,ax=ax)
+
+
+def bivariate_expression_plot(ax: plt.Axes,
+                              data : [np.ndarray,np.ndarray],
+                              feature: str,
+                              feature_name: str = "Feature",
+                              cmap: colormap = plt.cm.magma,
+                              alpha: float = 0.05,
+                              **kwargs,
+                              )->np.ndarray:
+
+
+    xs = data[0]
+    ys = data[1]
+
+    model_full = OLS(ys,xs,hasconst = True)
+
+    model_x1 = OLS(ys,xs[:,[0,1]])
+    model_x2 = OLS(ys,xs[:,[0,2]])
+
+    results_full = model_full.fit()
+    results_x1 = model_x1.fit()
+    results_x2 = model_x2.fit()
+
+    likelihood = np.array([results_full.llf,results_x1.llf,results_x2.llf])
+
+    insig = np.any(results_full.pvalues > alpha)
+
+    XY,Z,reshape_shape = expression_fields(xs,ys,results_full)
+
+    plot_field(ax,
+               Z.reshape(reshape_shape),
+               XY,
+               fontsize=kwargs.get("label_fontsize",15),
+               cmap = cmap)
+
+    ax.set_title("{} : {}".format(feature_name,feature) + ("(*)" if insig else ""  ),
+                 fontsize = kwargs.get("title_fontsize",25))
+
+    return likelihood
+

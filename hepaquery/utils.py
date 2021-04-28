@@ -7,8 +7,13 @@ import pandas as pd
 from scipy.spatial.distance import cdist
 from functools import reduce
 from skmisc.loess import loess
+from scipy.stats import chi2
+
 
 import matplotlib.pyplot as plt
+
+from os import listdir
+import os.path as osp
 
 
 from typing import *
@@ -102,5 +107,70 @@ def smooth_fit(xs : np.ndarray,
     stderr = pred.stderr
 
     return (xs,ys,ys_hat,stderr)
+
+
+def load_genelist(dirname: str,
+                  filter_tag: Optional[str],
+                  include_all: bool = True,
+                  )-> Dict[str,List[str]]:
+
+    pths = listdir(dirname)
+
+    if filter_tag is not None:
+        pths = list(filter(lambda x: filter_tag in x,pths))
+
+    genes = dict()
+
+    for filename in pths:
+        name = '.'.join(filename.split(".")[0:-1])
+        with open(osp.join(dirname,filename),"r+") as f:
+            _gs = f.readlines()
+            _gs = [x.replace("\n","") for x in _gs]
+            genes.update({name:_gs})
+
+    if include_all:
+        genes["all"] = reduce(lambda x,y : x + y,list(genes.values()))
+
+    return genes
+
+def likelihood_ratio_test(likelihoods: Dict[str,float],
+                          dofs: Union[float,int,np.ndarray],
+                          included_covariates: List[List[str]],
+                          alpha: float = 0.05,
+                          )->pd.DataFrame:
+
+    n_features = len(likelihoods)
+    features = list(likelihoods.keys())
+    n_tests = len(features[0]) - 1
+
+    included_covariates = [[ic] if isinstance(ic,str) else ic\
+                           for ic in included_covariates ]
+
+    colnames = ["covariates_" + "_".join(ic) for ic in included_covariates]
+    model_eval = pd.DataFrame(np.zeros((n_features,n_tests)),
+                              columns = colnames,
+                              index = features,
+                              )
+
+    if isinstance(dofs,float) or\
+       isinstance(dofs,int):
+        dofs = np.array([dofs] * n_tests)
+
+    for gene,vals in likelihoods.items():
+        pvals = np.zeros(n_tests)
+        for k,(dof,v) in enumerate(zip(dofs,vals[1::])):
+            rv = chi2(dof)
+            D = -2 * (v - vals[0])
+            pvals[k] = rv.sf(D)
+
+        model_eval.loc[gene,:] = pvals
+
+    for k,ic in enumerate(included_covariates):
+        colname = "[full_model]_superior_to_[" + "_".join(ic) + "_model]"
+        model_eval[colname] = model_eval.iloc[:,k].values < alpha
+
+    return model_eval
+
+
 
 

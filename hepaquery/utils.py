@@ -141,7 +141,9 @@ def likelihood_ratio_test(likelihoods: Dict[str,float],
 
     n_features = len(likelihoods)
     features = list(likelihoods.keys())
-    n_tests = len(features[0]) - 1
+    element_0 = list(likelihoods.values())[0]
+    n_tests = len(element_0) - 1
+	
 
     included_covariates = [[ic] if isinstance(ic,str) else ic\
                            for ic in included_covariates ]

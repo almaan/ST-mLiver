@@ -496,6 +496,7 @@ def bivariate_expression_plot(ax: plt.Axes,
                               feature_name: str = "Feature",
                               cmap: colormap = plt.cm.magma,
                               alpha: float = 0.05,
+                              distance_scale_factor: float = 1,
                               **kwargs,
                               )->np.ndarray:
 
@@ -517,6 +518,8 @@ def bivariate_expression_plot(ax: plt.Axes,
     insig = np.any(results_full.pvalues > alpha)
 
     XY,Z,reshape_shape = expression_fields(xs,ys,results_full)
+
+    XY = XY * distance_scale_factor
 
     plot_field(ax,
                Z.reshape(reshape_shape),

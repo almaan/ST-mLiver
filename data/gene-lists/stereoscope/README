@@ -1,0 +1,4 @@
+# Gene lists to be used in the sterescope analysis
+
+* top5000-genes-001.txt - created 2020-10-13 using the script make-gene-lists.R, based on the itzkowitz data
+* top5000-genes-002.txt - created 2020-10-13 using the script make-gene-lists.R, based on the MCA data

@@ -23,6 +23,45 @@ library(pheatmap)
 
 ```
 
+
+####Reviewer comment: 
+A major power of the approach is the ability to simultaneously record the distances of each spot from both the portal vein and the central vein. This enables assessing how the expression of each gene is affected by these two distances, potentially leading to novel insights into regulation of hepatocyte zonation. Hepatocyte zonation is shaped by both morphogens secreted by the non-parenchymal cells that surround the central vein (e.g. Wnt and Rspo3) as well as blood-borne factor such as hormones, nutrients and oxygen (for a list of some of these putative targets see PMID 28166538, Supplementary Table 4). It would be interesting to perform multi-linear regression of the expression of each gene vs. both the distance to the closest portal node and to the closest central vein. One could then use Bayesian Information Criterion or other methods to assess which of these distances is the stronger explanatory variable. I would expect classic Wnt target pericentral genes such as Axin2, Lgr5 and Cyp2e1, to be strongly affected by the distance to the central vein, classic glucagon targets should be periportal (PMID 29555772), whereas for some genes such as Cyp2f2, which is both a Wnt-inhibited gene and a RAS-activated gene (periportal signal) identifying the dominant distance could be very interesting.
+
+We used the sugested genes for wnt and glucagon targets 
+
+````{r, }
+
+#get DEG between cluster 1 and 2 
+m.veins <- FindMarkers(se.cca, ident.1 = 1, ident.2 = 2)
+
+# + values represent portal genes, - values represent central genes
+m.veins <- m.veins[order(-m.veins$avg_log2FC),]
+
+#chronic hypoxia targets: PMID 20103700
+CHT <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/hypoxia_targets.txt")
+CHT <- as.vector(CHT$V1)
+cht.m <- subset(m.veins, rownames(m.veins) %in% CHT)
+nrow(cht.m)
+
+write.table(rownames(cht.m[c(1:2,20:21),]), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ST-mLiver/data/gene-lists/ans_1/hypoxia_short.txt", quote = F, row.names = F, col.names = F)
+
+#Pituitary hormones targets: PMID 19943135 
+PHT <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/hormone_targets.txt")
+PHT <- as.vector(PHT$V1)
+pht.m <- subset(m.veins, rownames(m.veins) %in% PHT)
+
+write.table(rownames(pht.m[c(1:2,20:21),]), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ST-mLiver/data/gene-lists/ans_1/hormones_short.txt", quote = F, row.names = F, col.names = F)
+
+#Ha-ras targets: PMID 24535843
+HAR <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/ha-ras_targets.txt")
+
+HAR <- as.vector(HAR$V1)
+har.m <- subset(m.veins, rownames(m.veins) %in% HAR)
+write.table(rownames(har.m[c(1:2,31:32),]), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ST-mLiver/data/gene-lists/ans_1/ras_short.txt", quote = F, row.names = F, col.names = F)
+
+```
+
+
 ###Reviewer comment: "The paper discusses pericentral hepatocyte genes and periportal hepatocyte genes, what about the mid-lobule-peaking genes such as Hamp, Hamp2 and Igfbp2. Are they expressed in the ‘intermediate’ cluster 0? In a related note, Figure 1C does not show any markers for cluster 0, is this a real cluster or simply spots with low number of reads? A violinplot of log10 (numbers of reads) for each cluster + umap such as Figure 1b colored by log10(number of reads per cell) would be highly informative here. If cluster 0 spots consist of low-read spots I think they should be removed."
 
 1: Visualize expression of mid-lobule-peaking genes in umap and visualize the expression of these genes across clusters (bar-graph with normalized read-count of each gene across all clusters)
@@ -190,8 +229,9 @@ png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision_plots/n
 print(p.igfbp2)
 dev.off()
 
-
 ```
+
+
 ```{r, visulize individual genes in violin plots}
 #compare to violinplot depiction: 
 
@@ -601,6 +641,33 @@ write.table(lcm.markers, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_L
 
 ```
 
+```{r, HSC signature from PMID: 31722201}
+
+
+#extract genes from expression matrix
+
+m.hsc <- FindMarkers(se.fibrotic, ident.1 = "HSC", only.pos = T, logfc.threshold = 1)
+m.hsc <- subset(m.hsc, p_val_adj < 0.05)
+m.hsc <- subset(m.hsc, rownames(m.hsc) %in% rownames(se.cca@assays$RNA))
+hsc.all <- rownames(m.hsc)
+
+hsc.mat <- se.cca@assays$SCT[rownames(se.cca@assays$SCT) %in% hsc.all ,]
+se.cca[["hsc"]] <- CreateAssayObject(counts = hsc.mat)
+
+
+hsc.markers <- FindMarkers(se.cca, assay = "hsc", ident.1 = 1, ident.2 = 2, logfc.threshold = 0.001)
+
+hsc.markers <- subset(hsc.markers, p_val_adj < 0.05)
+hsc.markers <- hsc.markers[order(-hsc.markers$avg_log2FC),]
+hsc.short <- hsc.markers[c(2:4, 30:32),]
+
+
+write.table(as.vector(rownames(hsc.short)), "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ST-mLiver/data/gene-lists/ans_4/hsc-short.txt", row.names = F, col.names = F, quote = F)
+
+write.table(hsc.markers, "~/Desktop/PhDprojectFranziskaHildebrandt/ST-liver/uninfectedLiver-sequenced/ST-mLiver/data/gene-lists/ans_4/hsc-all.tsv", sep = "\t", row.names = rownames(hsc.markers), col.names = T, quote = F)
+
+```
+
 
 ```{r, visualize the differential gene expression in heatmaps (individual assays with only marker genes)}
 
@@ -630,6 +697,9 @@ pheatmap(phmat[rownames(pDC.markers),], fontsize_row = 8, cellwidth = 15, cellhe
 
 ##LCMs
 pheatmap(phmat[rownames(lcm.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
+
+##HSCs
+pheatmap(phmat[rownames(hsc.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000))
 
 ```
 
@@ -678,6 +748,12 @@ dev.off()
 #LCMs
 png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev1/immune_LEC_zonation/LCMs_DEG_1_2.png", width = 10, height = 15, units = "cm", res = 300)
 print(pheatmap(phmat[rownames(lcm.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
+dev.off()
+
+
+##HSCs
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev1/immune_LEC_zonation/HSCs_DEG_1_2.png", width = 10, height = 25, units = "cm", res = 300)
+print(pheatmap(phmat[rownames(hsc.markers),], fontsize_row = 8, cellwidth = 15, cellheight = 15, clustering_distance_rows = "euclidean", cluster_cols = F, color = colorRampPalette(c("#440154" ,"#21908C", "#FDE725"))(1000)))
 dev.off()
 
 ```
@@ -1354,17 +1430,7 @@ DMC <- mus.kegg.pw$mmu00980_Metabolism_of_xenobiotics_by_cytochrome_P450
 
 ##Based on published data
 
-#chronic hypoxia targets: PMID 20103700
-CHT <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/hypoxia_targets.txt")
-CHT <- as.vector(CHT$V1)
 
-#Pituitary hormones targets: PMID 19943135 
-PHT <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/hormone_targets.txt")
-PHT <- as.vector(PHT$V1)
-
-#Ha-ras targets: PMID 24535843
-HAR <- read.table("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/gene-lists/ha-ras_targets.txt")
-HAR <- as.vector(HAR$V1)
 
 ```
 
@@ -1440,7 +1506,7 @@ nSLMpp <- sum(rownames(markers.cca.1) %in% SLM)
 SLMr <- log2(nSLMpp/nSLMpc)
 SLMr
 
-#Primary bilde acid biosynthesis
+#Primary bile acid biosynthesis
 nPBSpc <- sum(rownames(markers.cca.2) %in% PBS)
 nPBSpp <- sum(rownames(markers.cca.1) %in% PBS)
 PBSr <- log2(nPBSpp/nPBSpc)
@@ -1488,9 +1554,9 @@ nHARpp <- sum(rownames(markers.cca.1) %in% HAR)
 HARr <- log2(nHARpp/nHARpc)
 HARr
 
-r.l <- c(FAMr,OXPr,GSPr,GSP2r, WNTr,WNT2r ,G_GNr,GLMr,PBSr,FMMr,PPPr,AAGMr, DMCr, CHTr, PHTr, HARr)
+r.l <- c(FAMr,OXPr,GSPr, WNTr ,G_GNr,GLMr,FMMr,PPPr)
 
-df.r <- data.frame(kegg_pathway = c("Fatty acid metabolism", "Oxidative phosphorylation", "Glucagon signaling pathway", "Glucagon targets (PMID: 29555772)" ,"WNT signaling pathway","WNT targets (PMID: 24214913)", "Glycolysis/Gluconeogenesis", "Glycerolipid metabolism", "Primary bilde acid biosynthesis", "Fructose and mannose metabolism", "Pentose phosphate pathway", "Alanine, aspartate and glutamate metabolism", "Drug metabolism - cytochrome P450", "Chronic hypoxia targets (PMID: 20103700)", "Pituitary hormones targets (PMID: 19943135)", "Ha-ras targets (PMID: 24535843)"), r.l)
+df.r <- data.frame(kegg_pathway = c("Fatty acid metabolism", "Oxidative phosphorylation", "Glucagon signaling pathway" ,"WNT signaling pathway", "Glycolysis/Gluconeogenesis", "Glycerolipid metabolism",  "Fructose and mannose metabolism", "Pentose phosphate pathway"), r.l)
 
 df.r <- df.r[order(df.r$r.l),]
 df.r$id <- ifelse(df.r$r.l < 0, paste("central"), paste("portal")) 
@@ -1654,10 +1720,10 @@ library(ggpubr)
 
 se1 <- SubsetSTData(se.cca_cc, spots = rownames(subset(se.cca[[]], sample_id %in% c(8))))
 
-gg <- data.frame(nCount = se.cca_cc@meta.data$nCount_RNA,
-                 nCell = se.cca_cc@meta.data$cell_count)
+gg <- data.frame(nCount = se.cca@meta.data$nCount_RNA,
+                 nCell = se.cca@meta.data$cell_count)
 
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cellcount_cor_cc_norm/cell_count_RNA_count_cor_cc_CN65_E1.png", width = 4200, height = 3000, res = 600)
+png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/cellcount_cor/cell_count_cor.png", width = 4200, height = 3000, res = 600)
 ggplot(gg, aes(nCount, nCell)) +
   geom_point() +
   stat_cor(method = "pearson")
@@ -1899,7 +1965,7 @@ se.cca <- se.cca %>%
 
 se.cca <- SetIdent(se.cca, value = "seurat_clusters")
 
-saveRDS(se.cca_cc, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/cca-object_cellcount_norm")
+saveRDS(se.cca_cc, "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/supplementary/se_cca_cc_object")
 
 ```
 
@@ -1915,7 +1981,7 @@ se.cca_cc <- RenameIdents(se.cca_cc, new.cluster.ids)
 
 DimPlot(se.cca, pt.size = 1 , label = T, cols = cluster.cols)
 
-cluster.cols.cc = c("blue3","yellow3", "red3", "darkorange1","green4", "turquoise3")
+cluster.cols.cc = c("blue3","yellow3", "red3", "turquoise3","green4","darkorange1")
 
 DimPlot(se.cca_cc, pt.size = 1 , label = T, cols = cluster.cols.cc)
 
@@ -1945,29 +2011,21 @@ write.table(crd.2, file = "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_
 
 ```
 
-```{r, export gt objects for markers}
-
-png("~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev2/markers-cca-5.png", width = 8400, height = 6000, res = 600)
-gt(markers.cca.5, rownames_to_stub = TRUE)
-dev.off()
-
-```
-
 
 ```{r, compare the cluster-annotations between datasets}
 
 
 #extract the seurat clusters from the cell-count normalized data and append the cluster annotations to the original (non-cellcount normalized data)
-cc_clusters <- se.cca_cc[["seurat_clusters"]]
+cc_clusters <- se.cca.3.cc[["seurat_clusters"]]
 
 se.cca$cc_seurat_clusters <- cc_clusters
 #get new and old labels
 convert_old <- c("0" = "cluster 0", "1" = "portal cluster","2" = "central cluster", "3" = "heme cluster", "4" = "immunity cluster", "5" = "cluster 5")
-convert_new <- c("0" = "portal cluster", "1" = "cluster 0" ,"2" = "central cluster", "3" = "heme cluster", "4" = "cluster 5", "5" = "immunity cluster")
+convert_new <- c("0" = "cluster 0", "1" = "portal cluster","2" = "central cluster", "3" = "heme cluster", "4" = "cluster 5", "5" = "immunity")
 
 
 se.cca$label_old <- convert_old[as.character(se.cca$seurat_clusters)]
-se.cca$label_new <- convert_new[as.character(se.cca$cc_seurat_clusters)]
+se.cca$label_new<- convert_new[as.character(se.cca_cc$seurat_clusters)]
 
 
 tab <- table(se.cca@meta.data[, c("seurat_clusters", "cc_seurat_clusters")])
@@ -1981,4 +2039,20 @@ df <- data.frame("original_norm_clusters" = se.cca$seurat_clusters, "cellcount_n
 
 write.table(df, "~/Desktop/clusters_LL.tsv", sep = "\t" , row.names = rownames(df), quote = F)
 
+png(filename = "~/Desktop/PhDprojectFranziskaHildebrandt/Publication_Liver/revision/revision_plots/rev3/DimPlot_cc_norm.png", width = 4200, height = 3000, res = 300) #Units are pixels by default
+print(DimPlot(se.cca_cc, pt.size = 1.2, cols = cluster.cols.cc) +
+        theme(axis.ticks = element_blank(), axis.text = element_blank(), axis.title = element_blank()))
+dev.off()
+
 ```
+
+```{r, check ARI}
+
+
+library(mclust)
+
+mclust::adjustedRandIndex(se.cca$label_old, se.cca$label_new)
+
+
+```
+

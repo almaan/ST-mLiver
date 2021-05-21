@@ -1,0 +1,203 @@
+---
+title: "cca analysis with normalized cell count"
+output: html_notebook
+---
+
+
+
+```{r, visualize CCA analysis statistics, fig.height=4, fig.width=8}
+
+se.cca_cc <- SetIdent(se.cca_cc, value="sample_id")
+
+VlnPlot(se.cca_cc, features = "nFeature_RNA")
+
+ST.FeaturePlot(se.cca_cc, features = "nFeature_RNA")
+
+```
+
+Visualize the results of the CCA analysis on the tissue and in non-linear low-dimensional space (UMAP)
+
+
+```{r Plot the data, fig.height=8, fig.width=12}
+
+ST.DimPlot(object = se.cca_cc, indices =2 , reduction = "cca", dims = 1:5, ncol = 5, pt.size = 1.5, cols = rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")))
+ST.DimPlot(object = se.cca_cc, indices =2 ,reduction = "cca", dims = 6:10, ncol = 5, pt.size = 1.5, cols = rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")))
+
+DimPlot(object = se.cca_cc, reduction = "cca", group.by = "sample_id", pt.size = 0.5)
+```
+
+```{r, visualize first canonical factor, fig.height=4, fig.width=8}
+VlnPlot(object = se.cca_cc, features = "CC_1", group.by = "sample_id")
+#Genes driving the CC vectors on the tissue
+ProjectDim(se.cca_cc, reduction = "cca", dims.print = 1:10)
+
+```
+
+To visualize the data on the Brightfield images, the images need to be loaded into the object, masked to remove the background, and aligned towards each other. Since we are using samples of different sections - we need to align them manually instead of using the autmated alignment of the package. 
+
+```{r, Load images in CCA object, results= "hide"}
+
+se.cca_cc <- LoadImages(se.cca_cc) # resolution can be specified when loading the images using the xdim argument in the function 
+
+se.cca_cc <- MaskImages(se.cca_cc)
+
+#se.cca_cc <- AlignImages(se.cca_cc)
+
+#se.cca_cc <- ManualAlignImages(se.cca_cc)
+
+```
+
+```{r, plot images}
+#You can check whether the images are loaded, masked and aligned as expected using: 
+ImagePlot(se.cca_cc)
+```
+
+After deciding which dimensions to include in clustering analysis, we perform the clustering analysis as described in the methods part of this publication and in the function description of the Seurat package and tutorial.
+
+```{r, Clustering and Vizualization of dimensionalty reduction and clustering, fig.width= 10, fig.height= 7.5}
+
+dims.use <- c(1,3,4,7,8,9,10) #
+se.cca_cc <- se.cca_cc %>%
+  FindNeighbors(reduction = "cca", dims = dims.use) %>%
+  FindClusters(resolution = 0.3) %>%
+  RunUMAP(reduction = "cca", dims = dims.use, min.dist = 0.1, spread = 0.5)
+
+se.cca_cc <- SetIdent(se.cca_cc, value = "seurat_clusters")
+
+cluster.cols = c("yellow3", "blue3", "red3", "turquoise3","darkorange1","green4")
+
+ST.FeaturePlot(se.cca_cc, features = "seurat_clusters", split.labels = F, indices = 2,pt.size = 1.5, custom.theme = theme(legend.title = element_blank(), plot.title = element_blank(), legend.position = "right"))
+
+DimPlot(se.cca_cc, pt.size = 1 , label = T, cols = cluster.cols)
+
+#Overlay all cluster on the tissue
+FeatureOverlay(se.cca_cc, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca_cc[[]], seurat_clusters == c(1,2))),sampleids = 2, pt.alpha = 0.8, pt.size = 2, cols = c("blue3", "red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F)
+
+#Overlay a subset of clusters on the tissue, e.g. cluster 5
+FeatureOverlay(se.cca_cc, features = "seurat_clusters", ncols.samples = 1, spots = rownames(subset(se.cca_cc[[]], seurat_clusters == c(1,2))),sampleids = 2, pt.alpha = 0.8, pt.size = 2, cols = c("blue3", "red3"), custom.theme = theme(legend.title = element_blank(), plot.title = element_blank()), sample.label = F)
+
+
+```
+
+## Differential gene expression analysis
+
+To identify characteristic markers genes of the previously identified clusters differential genes expression is performed. To specify enriched genes in the individual clusters we set the parameters to only include markers with a positive log threshold
+
+
+```{r, find all markers}
+#Find the markers for all clusters
+se.cca_cc.markers <- FindAllMarkers(se.cca_cc) 
+head(se.cca_cc.markers)
+
+```
+
+```{r, find markers for each cluster}
+
+#Find indivdual markers
+
+markers.cca_cc.0 <- FindMarkers(se.cca_cc, ident.1 = 0, only.pos = T)
+markers.cca_cc.1 <- FindMarkers(se.cca_cc, ident.1 = 1, only.pos = T)
+markers.cca_cc.2 <- FindMarkers(se.cca_cc, ident.1 = 2, only.pos = T)
+markers.cca_cc.3 <- FindMarkers(se.cca_cc, ident.1 = 3, only.pos = T)
+markers.cca_cc.4 <- FindMarkers(se.cca_cc, ident.1 = 4, only.pos = T)
+markers.cca_cc.5 <- FindMarkers(se.cca_cc, ident.1 = 5, only.pos = T)
+
+#Filter for most siginificant markers
+markers.cca_cc.0 <- subset(markers.cca_cc.0, p_val_adj < 0.05 & 0.5 < avg_log2FC)
+markers.cca_cc.1 <- subset(markers.cca_cc.1, p_val_adj < 0.05)
+markers.cca_cc.2 <- subset(markers.cca_cc.2, p_val_adj < 0.05 & 0.5 < avg_log2FC)
+markers.cca_cc.3 <- subset(markers.cca_cc.3, p_val_adj < 0.05 & 0.5 < avg_log2FC)
+markers.cca_cc.4 <- subset(markers.cca_cc.4, p_val_adj < 0.05 & 0.5 < avg_log2FC)
+markers.cca_cc.5 <- subset(markers.cca_cc.5, p_val_adj < 0.05 & 0.5 < avg_log2FC)
+
+```
+
+```{r, look at differences in marker genes for the 2 clustering approaches}
+
+setdiff(rownames(markers.cca.4), rownames(markers.cca_cc.4))
+setdiff(rownames(markers.cca_cc.4), rownames(markers.cca.4))
+
+#inspect the markers in more detail 
+#compare logFCs
+
+markers.cca_cc.5 <- markers.cca_cc.5[order(-markers.cca_cc.5$avg_log2FC),]
+markers.cca.5 <- markers.cca.5[order(-markers.cca.5$avg_logFC),]
+
+head(markers.cca_cc.5)
+head(markers.cca.5)
+
+```
+
+```{r, Spatial auto-correlation}
+
+##First calculate the spatial correlations and put them in a new data-frame:
+
+stcor <- CorSpatialGenes(se.cca_cc, nNeighbours = 4) 
+#Visualize the matrix in a histogram:
+
+hist(stcor$cor)
+
+#Subset the genes with spatial autocorrelation above 0.2 for each cluster
+
+stcor.c5 <- subset(stcor, stcor$gene %in% rownames(markers.cca_cc.5) & stcor$cor > 0.2)
+stcor.c4 <- subset(stcor, stcor$gene %in% rownames(markers.cca_cc.4) & stcor$cor > 0.2)
+stcor.c3 <- subset(stcor, stcor$gene %in% rownames(markers.cca_cc.3) & stcor$cor > 0.2)
+stcor.c1 <- subset(stcor, stcor$gene %in% rownames(markers.cca_cc.1) & stcor$cor > 0.2)
+stcor.c2 <- subset(stcor, stcor$gene %in% rownames(markers.cca_cc.2) & stcor$cor > 0.2)
+
+#add names referring to the cluster-id as a column to the dataframe
+stcor.c1$cluster.id <- rep("cluster1", nrow(stcor.c1))
+stcor.c2$cluster.id <- rep("cluster2", nrow(stcor.c2))
+stcor.c3$cluster.id <- rep("cluster3", nrow(stcor.c3))
+stcor.c4$cluster.id <- rep("cluster4", nrow(stcor.c4))
+stcor.c5$cluster.id <- rep("cluster5", nrow(stcor.c5))
+
+stcor <- dplyr::bind_rows(stcor.c1, stcor.c2, stcor.c3, stcor.c4, stcor.c5)
+stcor.table <- stcor
+
+#visualize correlation values in a barplot and color the cluster-id
+
+ggplot(stcor, aes(reorder(gene, cor),cor, fill = cluster.id)) +
+  coord_flip()+
+  geom_bar(stat = "identity") + 
+  scale_fill_manual(values = c("blue3","red3", "turquoise3","green4")) +
+  labs(fill = "cluster identity") + 
+  xlab("gene") + 
+  ylab("spatial autocorrelation")+ 
+  theme_light()
+
+```
+
+Visualization of most variable genes for the identified clusters can be performed by a heatmap. How many genes one wishes to depict can be changed as described below. For the manuscript we decided to depict the 5 genes with the highest logFC genes of each cluster.
+
+```{r, heatmap ca_cc}
+
+#top 20 genes
+top20de <- se.cca_cc.markers %>% group_by(cluster) %>% top_n(n = 20, wt = avg_log2FC)
+#top 10 genes
+top10de <- se.cca_cc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+#top 5 genes
+top5de <- se.cca_cc.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+
+DoHeatmap(se.cca_cc, features = top20de$gene, size = 4, angle = 45, group.colors = cluster.cols)
+
+```
+
+```{r, correlation matrices of cluster markers}
+
+##CPearsin correlations between central and portal markers only
+
+cv.pv.cca.cor <- cor(t(as.matrix(se.cca@assays$SCT@data[c(rownames(markers.cca.1), rownames(markers.cca.2)), ])))
+
+corrplot(cv.pv.cca.cor , method="color", tl.col = "black", order = "FPC", col=colorRampPalette(c("blue4","white","red3"))(200), cl.lim = c(-1,1))
+
+#FPC order puts the correlations in order of the first Principal component, hence the components explaining the majority of the variance are on opposite ends of the plot 
+
+##Pearson correlation of all clusters 
+cca.cor <- cor(t(as.matrix(se.cca@assays$SCT@data[c(rownames(markers.cca.1), rownames(markers.cca.2), rownames(markers.cca.3), rownames(markers.cca.4), rownames(markers.cca.5)), ])))
+
+print(corrplot(cca.cor , method="color", tl.col = "black", order = "FPC", col=colorRampPalette(c("blue4","white","red3"))(100), cl.lim = c(-1,1)))
+
+
+```
+

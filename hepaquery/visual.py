@@ -447,7 +447,7 @@ def visualize_prediction_result(results : pd.DataFrame,
 
 def expression_fields(xs : np.ndarray,
                     ys : np.ndarray,
-                    results : regres, 
+                    results : regres,
                     n_ticks : int = 400,
                     )->Tuple[np.ndarray,np.ndarray,Tuple[int,int]]:
 
@@ -508,12 +508,14 @@ def bivariate_expression_plot(ax: plt.Axes,
 
     model_x1 = OLS(ys,xs[:,[0,1]])
     model_x2 = OLS(ys,xs[:,[0,2]])
+    model_0 = OLS(ys,xs[:,0])
 
     results_full = model_full.fit()
     results_x1 = model_x1.fit()
     results_x2 = model_x2.fit()
+    results_0 = model_0.fit()
 
-    likelihood = np.array([results_full.llf,results_x1.llf,results_x2.llf])
+    likelihood = np.array([results_full.llf,results_x1.llf,results_x2.llf,results_0.llf])
 
     insig = np.any(results_full.pvalues > alpha)
 

@@ -4,6 +4,7 @@ import anndata as ad
 
 from scipy.spatial.distance import cdist
 from sklearn.linear_model import LogisticRegression as LR
+from sklearn.metrics import roc_curve, roc_auc_score
 from functools import reduce
 
 from hepaquery.utils import iprint,eprint
@@ -697,6 +698,7 @@ class Model:
 
 
     def _generate_results_object(self,
+                                 auc: bool =False,
                                  )->Dict[str,List[Union[str,float]]]:
 
         """Generate a results DataFrame (Helper)"""
@@ -705,6 +707,8 @@ class Model:
                                                               train_on = [],
                                                               accuracy = [],
                                                               )
+        if auc:
+            results_df["AUC"] = []
 
         return results_df
 
@@ -714,6 +718,7 @@ class Model:
                           exclude_class : Optional[Union[List[str],str]]=None,
                           by : str = "sample",
                           verbose : Optional[bool] = None,
+                          auc: bool = False,
                           )->pd.DataFrame:
 
         """Cross validate model performance
@@ -747,6 +752,9 @@ class Model:
 
         valid_by = ["sample","individual"]
 
+        if auc:
+            auc_data = dict()
+
         if by not in valid_by:
             ValueError("by parameter must be one of {}"\
                        .format(", ".join(valid_by)))
@@ -774,7 +782,7 @@ class Model:
 
             name_list = self.data.individuals
 
-        results_df = self._generate_results_object()
+        results_df = self._generate_results_object(auc)
 
         for comb in combs:
             train_on = list(comb)
@@ -795,4 +803,28 @@ class Model:
             results_df["train_on"].append(', '.join(train_on))
             results_df["accuracy"].append(acc)
 
-        return pd.DataFrame(results_df)
+            if auc:
+                y_pred = self.predict(predict_on = predict_on,
+                                      exclude_class=exclude_class,
+                                      verbose = False,
+                                      return_probs = True,
+                                     )
+
+                y_pred = y_pred.iloc[:,0]
+
+                _,y_true = self.data.get_expression(predict_on,return_type=True)
+                y_true = y_true.loc[y_pred.index,:].\
+                    vein_type.map(dict(central = 1,portal = 0))
+
+                fpr,tpr,thres = roc_curve(y_true,y_pred)
+                auc_data[comb] = dict(fpr = fpr,
+                                      tpr = tpr,
+                                      thres = thres,
+                                      )
+                score = roc_auc_score(y_true,y_pred)
+                results_df["AUC"].append(score)
+
+        if auc:
+            return pd.DataFrame(results_df),auc_data
+        else:
+            return pd.DataFrame(results_df)

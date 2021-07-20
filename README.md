@@ -37,10 +37,12 @@ Below is an overview of the structure of this repository, including brief descri
 	* `Liver-ST.Rmd` - contains a R markdown script to perform canonical correlation analyis, clustering and DGEA, tissue visualization, correlation analysis, visualization of single cell integration using single cell data of the [Mouse Cell Atlas](https://www.cell.com/cell/fulltext/S0092-8674%2818%2930116-8) and comparative analyses with published data from [Halpern et al](https://www.nature.com/articles/nature21065)
 	* `MultiCCA.R` - contains code for the modified canonical correlation analysis function used in `Liver-ST.Rmd`
     * `cluster-interaction-analysis.ipynb` - notebook outlining the cluster interaction analysis (used to produce Supplementary Image 2)
+    * `synthetic-data-analysis.ipynb` - generation and analysis of synthetic spatial transcriptomics data, to compare correlation values between observed and random cell distributions. 
     * `make-gene-list.R` - script to generate list of highly variable genes (hvgs) to use in `stereoscope` mapping.
     * `prepare-data.py` - program with CLI to generate `h5ad` files for spatial analysis (in `vein-analysis.ipynb`). See
     * `vein-analysis.ipynb` - notebook outlining the feature by distance analysis and vein type classification/prediction based on NEPs.
     * `proportion-analysis.ipynb` - similar to first part of `vein-analysis.ipynb` but looking at the cell type proportions  -compared to expression levels - (obtained from `stereoscope`) as a function of distance to the nearest vein.
+
 * `res/sterescope-res/`
     * `CNX_ZY` - folder for each sample (X,Y, and Z are various parts of identifiers). Each folder contains a `W*.tsv` file which are the `sterescope` results, formatted as `[n_spots]x[n_types]` matrices.
     * `st_loss.txt` - loss output for st-model

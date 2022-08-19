@@ -4,6 +4,7 @@
 import pandas as pd
 import numpy as np
 import anndata as ad
+import scanpy as sc
 
 from sklearn.cluster import KMeans,DBSCAN
 from scipy.spatial.distance import cdist
@@ -17,7 +18,7 @@ import argparse as arp
 
 from PIL import Image
 
-from pathlib import Path
+from pathlib import Path,PosixPath
 
 import yaml
 
@@ -29,8 +30,14 @@ class YAML_CONFIG:
     rgb = "rgb"
     sample = "sample"
     replicate = "replicate"
+    datadir = "visium_directory"
+
     def __init__():
         pass
+
+
+def get_visium_sample_name(adata:ad.AnnData)->str:
+    return list(adata.uns["spatial"].keys())[0]
 
 
 
@@ -133,7 +140,6 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
         dists = pd.DataFrame(dists,
                              index = spt.index,
                              )
-        
         obsm.update({"vein_distances":dists})
 
     if segment:
@@ -165,8 +171,14 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
 
         mask_long["id"] -= mask_long["id"].values.min()
 
-    img = Image.open(img)
-    img = np.asarray(img).astype(int)
+
+    if isinstance(img,PosixPath):
+        img = Image.open(img)
+        img = np.asarray(img).astype(int)
+    elif isinstance(img,np.ndarray):
+        pass
+    else:
+        raise NotImplementedError("Image type not yet supported")
 
     if "rgb" not in data.keys():
         mask_long["type"] -= mask_long["type"].values.min()
@@ -198,6 +210,7 @@ def prep_anndata(data : Union[Dict[str,pd.DataFrame],Dict[str,Path]],
 
 
 def read_yaml(filename : Path,
+              data_type: str = "st",
               )->Union[Dict[str,pd.DataFrame],
                        Dict[str,Path]]:
 
@@ -211,48 +224,69 @@ def read_yaml(filename : Path,
             pths[k] = Path(p)
 
 
-    cnt = pd.read_csv(pths[YAML_CONFIG.cnt],
-                      sep = '\t',
-                      header = 0,
-                      index_col = 0)
+    if data_type.lower() == "st":
+      cnt = pd.read_csv(pths[YAML_CONFIG.cnt],
+                        sep = '\t',
+                        header = 0,
+                        index_col = 0)
 
-    spt = pd.read_csv(pths[YAML_CONFIG.spt],
-                      sep = '\t',
-                      header = 0,
-                      index_col = None)
-
-
-    spt.index = pd.Index([str(x)+"x"+str(y) for x,y\
-                          in zip(spt["x"].values,
-                                 spt["y"].values)])
+      spt = pd.read_csv(pths[YAML_CONFIG.spt],
+                        sep = '\t',
+                        header = 0,
+                        index_col = None)
 
 
-    inter = spt.index.intersection(cnt.index)
+      spt.index = pd.Index([str(x)+"x"+str(y) for x,y\
+                            in zip(spt["x"].values,
+                                  spt["y"].values)])
 
-    assert len(inter) > 0,\
-        "No matching entries between"\
-        "count and spot data"
 
-    cnt = cnt.loc[inter,:]
-    spt = spt.loc[inter,:]
+      inter = spt.index.intersection(cnt.index)
 
-    data = dict(cnt = cnt,
-                spt = spt,
-                img = pths[YAML_CONFIG.img],
-                mask = pths[YAML_CONFIG.mask]
-                )
+      assert len(inter) > 0,\
+          "No matching entries between"\
+          "count and spot data"
+
+      cnt = cnt.loc[inter,:]
+      spt = spt.loc[inter,:]
+
+      data = dict(cnt = cnt,
+                  spt = spt,
+                  img = pths[YAML_CONFIG.img],
+                  mask = pths[YAML_CONFIG.mask]
+                  )
+    elif data_type.lower() == "visium":
+        adata = sc.read_visium(pths[YAML_CONFIG.datadir])
+        sample_name = get_visium_sample_name(adata)
+
+        cnt = adata.to_df()
+        sf = adata.uns["spatial"][sample_name]["scalefactors"]['tissue_hires_scalef']
+
+        spt = pd.DataFrame(adata.obsm["spatial"] * sf, columns = ["pixel_x","pixel_y"],index = cnt.index)
+        spt["x"] = adata.obs["array_col"]
+        spt["y"] = adata.obs["array_row"]
+
+        img = adata.uns["spatial"][sample_name]["images"]["hires"]
+
+        data = dict(cnt = cnt,
+                    spt = spt,
+                    img = img,
+                    mask = pths[YAML_CONFIG.mask]
+        )
+
+
 
     if YAML_CONFIG.sample not in pths.keys():
         sample = osp.basename(filename).split("-")[0]
         data["sample"] = sample
     else:
-        data["sample"] = pths[YAML_CONFIG.sample]
+        data["sample"] = str(pths[YAML_CONFIG.sample])
 
     if YAML_CONFIG.replicate not in pths.keys():
         replicate = osp.basename(filename).split("-")[1]
         data["replicate"] = replicate
     else:
-        data["replicate"] = pths[YAML_CONFIG.replicate]
+        data["replicate"] = str(pths[YAML_CONFIG.replicate])
 
 
     if YAML_CONFIG.rgb in pths.keys():
@@ -288,6 +322,15 @@ def main():
        default = None,
        help = "output directory",
        )
+
+    aa("-dt","--data_type",
+       type = str,
+       choices = ["st","visium"],
+       required = False,
+       default = "st",
+       help = "type of data",
+       )
+
 
     aa("-s","--segment",
        action = "store_true",
@@ -334,7 +377,7 @@ def main():
         sys.exit(-1)
     else:
         print("[INFO] : reading : {}".format(args.input))
-        data = read_data(args.input)
+        data = read_data(args.input, data_type = args.data_type)
 
     adata = prep_anndata(data,
                          n_types = args.n_types,
